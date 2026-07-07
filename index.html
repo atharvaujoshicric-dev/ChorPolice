@@ -3,30 +3,51 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>Chor Police — Login</title>
+<title>Chor Dashboard</title>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
 <div class="wrap">
   <div class="topbar">
-    <h1>🚨 Chor Police</h1>
+    <h1 id="playerName">Chor</h1>
+    <a href="#" class="logout" onclick="logout()">Logout</a>
+  </div>
+
+  <div id="statusBanner"></div>
+
+  <div class="card" style="text-align:center;">
+    <h3 style="margin-bottom:6px;">Your code</h3>
+    <div id="codeText" style="font-size:22px; font-weight:800; letter-spacing:2px; margin-bottom:10px;"></div>
+    <div class="qr-box"><canvas id="qrCanvas"></canvas></div>
+    <p class="muted">Show this to a volunteer at a checkpost, or a police officer if caught.</p>
   </div>
 
   <div class="card">
-    <h2>Enter your code</h2>
-    <p class="muted">Get your login code from the game admin.</p>
-    <input id="codeInput" placeholder="e.g. AB12CD" autocapitalize="characters" autocomplete="off" />
-    <div id="err" class="error-msg" style="display:none;"></div>
-    <button id="loginBtn">Login</button>
+    <h3>Lifelines</h3>
+    <div id="hearts" class="hearts"></div>
   </div>
 
   <div class="card">
-    <p class="muted" style="margin:0;">Roles: Chor (thief), Police, Checkpost Volunteer, Admin — all use the same code login above. You'll be sent to the right screen automatically.</p>
+    <h3>Progress <span id="progressCount" class="badge"></span></h3>
+    <div id="checkpostList"></div>
+  </div>
+
+  <div class="card">
+    <h3>Game rules — quick reminder</h3>
+    <ul class="muted">
+      <li>Visit a checkpost <b>alone</b> → safe ticket (no penalty, but doesn't count as progress).</li>
+      <li>Visit a checkpost with <b>exactly 10</b> chors together → you get the stamp (counts toward winning).</li>
+      <li>Any other group size at a checkpost → police may catch you.</li>
+      <li>While travelling between checkposts, groups don't protect you — police can catch you alone.</li>
+      <li>3 lifelines total. Lose all 3 and you're eliminated.</li>
+      <li>Stamp every checkpost to win!</li>
+    </ul>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
 <script src="js/supabaseClient.js"></script>
-<script src="js/login.js"></script>
+<script src="js/chor.js"></script>
 </body>
 </html>
