@@ -6,8 +6,12 @@ let scanning = false;
 let pendingChor = null;
 
 async function onScanSuccess(decodedText) {
-  const code = decodedText.trim().toUpperCase();
   await stopScan();
+  await lookupChor(decodedText);
+}
+
+async function lookupChor(rawCode) {
+  const code = rawCode.trim().toUpperCase();
 
   const { data, error } = await sb.from("players").select("*").eq("code", code).eq("role", "chor").maybeSingle();
 
@@ -83,4 +87,14 @@ document.getElementById("confirmBtn").addEventListener("click", confirmCatch);
 document.getElementById("cancelBtn").addEventListener("click", () => {
   pendingChor = null;
   document.getElementById("confirmCard").style.display = "none";
+});
+
+document.getElementById("manualLookupBtn").addEventListener("click", () => {
+  const input = document.getElementById("manualCode");
+  if (!input.value.trim()) return;
+  lookupChor(input.value);
+  input.value = "";
+});
+document.getElementById("manualCode").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("manualLookupBtn").click();
 });

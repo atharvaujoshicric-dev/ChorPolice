@@ -3,7 +3,13 @@ let penaltyTimer = null;
 
 document.getElementById("playerName").textContent = session.name;
 document.getElementById("codeText").textContent = session.code;
-QRCode.toCanvas(document.getElementById("qrCanvas"), session.code, { width: 200, margin: 1 });
+
+const qrImg = document.getElementById("qrImg");
+qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(session.code)}`;
+qrImg.onerror = () => {
+  document.querySelector(".qr-box").innerHTML =
+    '<span style="color:#900;">Could not load QR image — your code above still works, volunteers/police can type it in manually.</span>';
+};
 
 async function refresh() {
   const { data: player } = await sb.from("players").select("*").eq("id", session.id).single();

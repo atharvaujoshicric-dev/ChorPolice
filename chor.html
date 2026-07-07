@@ -18,7 +18,7 @@
   <div class="card" style="text-align:center;">
     <h3 style="margin-bottom:6px;">Your code</h3>
     <div id="codeText" style="font-size:22px; font-weight:800; letter-spacing:2px; margin-bottom:10px;"></div>
-    <div class="qr-box"><canvas id="qrCanvas"></canvas></div>
+    <div class="qr-box"><img id="qrImg" width="220" height="220" alt="Your QR code" /></div>
     <p class="muted">Show this to a volunteer at a checkpost, or a police officer if caught.</p>
   </div>
 
@@ -46,7 +46,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script src="js/supabaseClient.js"></script>
 <script src="js/chor.js"></script>
 </body>

@@ -115,3 +115,14 @@ document.getElementById("startScanBtn").addEventListener("click", startScan);
 document.getElementById("stopScanBtn").addEventListener("click", stopScan);
 document.getElementById("finalizeBtn").addEventListener("click", finalizeGroup);
 document.getElementById("clearBtn").addEventListener("click", () => { pending = []; renderPending(); });
+
+document.getElementById("manualAddBtn").addEventListener("click", async () => {
+  const input = document.getElementById("manualCode");
+  const code = input.value.trim();
+  if (!code) return;
+  await onScanSuccess(code);
+  input.value = "";
+});
+document.getElementById("manualCode").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("manualAddBtn").click();
+});
