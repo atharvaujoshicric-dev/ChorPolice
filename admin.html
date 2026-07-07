@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Admin — Chor Police</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>🛠 Admin</h1>
+    <a href="#" class="logout" onclick="logout()">Logout</a>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="overview">Live Status</button>
+    <button class="tab-btn" data-tab="players">Players</button>
+    <button class="tab-btn" data-tab="checkposts">Checkposts</button>
+    <button class="tab-btn" data-tab="logs">Catch Log</button>
+    <button class="tab-btn" data-tab="settings">Settings</button>
+  </div>
+
+  <!-- OVERVIEW -->
+  <div class="tab-panel active" id="tab-overview">
+    <div class="card">
+      <h3>Chors</h3>
+      <table>
+        <thead><tr><th>Name</th><th>Code</th><th>Status</th><th>Lives</th><th>Stamps</th></tr></thead>
+        <tbody id="chorTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PLAYERS -->
+  <div class="tab-panel" id="tab-players">
+    <div class="card">
+      <h3>Add player</h3>
+      <input id="newName" placeholder="Full name" />
+      <select id="newRole">
+        <option value="chor">Chor</option>
+        <option value="police">Police</option>
+        <option value="volunteer">Checkpost Volunteer</option>
+      </select>
+      <select id="newCheckpost" style="display:none;"></select>
+      <button id="addPlayerBtn">Generate Code & Add</button>
+      <div id="newPlayerResult"></div>
+    </div>
+    <div class="card">
+      <h3>All players</h3>
+      <table>
+        <thead><tr><th>Name</th><th>Role</th><th>Code</th><th>Checkpost</th><th></th></tr></thead>
+        <tbody id="playersTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CHECKPOSTS -->
+  <div class="tab-panel" id="tab-checkposts">
+    <div class="card">
+      <h3>Add checkpost</h3>
+      <input id="newCheckpostName" placeholder="Checkpost name (e.g. Clock Tower)" />
+      <input id="newCheckpostOrder" placeholder="Order number (e.g. 1)" type="number" />
+      <button id="addCheckpostBtn">Add Checkpost</button>
+    </div>
+    <div class="card">
+      <h3>All checkposts</h3>
+      <table>
+        <thead><tr><th>#</th><th>Name</th><th></th></tr></thead>
+        <tbody id="checkpostsTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- LOGS -->
+  <div class="tab-panel" id="tab-logs">
+    <div class="card">
+      <h3>Catches</h3>
+      <table>
+        <thead><tr><th>Time</th><th>Chor</th><th>Police</th><th>Result</th></tr></thead>
+        <tbody id="catchesTable"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Checkpost visits</h3>
+      <table>
+        <thead><tr><th>Time</th><th>Chor</th><th>Checkpost</th><th>Group</th><th>Status</th></tr></thead>
+        <tbody id="visitsTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="tab-panel" id="tab-settings">
+    <div class="card">
+      <h3>Game settings</h3>
+      <label class="muted">Group size required for a stamp</label>
+      <input id="setGroupSize" type="number" />
+      <label class="muted">Penalty duration (seconds)</label>
+      <input id="setPenaltySeconds" type="number" />
+      <label class="muted">Lifelines per chor</label>
+      <input id="setLifelines" type="number" />
+      <button id="saveSettingsBtn">Save Settings</button>
+      <div id="settingsMsg"></div>
+    </div>
+    <div class="card">
+      <h3>Danger zone</h3>
+      <button id="resetGameBtn" class="danger">Reset Game (wipe progress)</button>
+      <p class="muted">Keeps all players/checkposts, clears stamps, catches, lifelines & penalties.</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>

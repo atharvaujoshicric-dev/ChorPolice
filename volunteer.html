@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Checkpost Volunteer</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1 id="playerName">Volunteer</h1>
+    <a href="#" class="logout" onclick="logout()">Logout</a>
+  </div>
+
+  <div class="card">
+    <h3>Your checkpost</h3>
+    <div id="checkpostName" class="badge stamped" style="font-size:16px;"></div>
+  </div>
+
+  <div class="card">
+    <h3>Scan chors</h3>
+    <button id="startScanBtn">📷 Start Scanning</button>
+    <button id="stopScanBtn" class="secondary" style="display:none;">Stop Camera</button>
+    <div id="reader" style="display:none;"></div>
+    <div id="scanMsg" class="muted"></div>
+  </div>
+
+  <div class="card">
+    <h3>Pending group (<span id="pendingCount">0</span>)</h3>
+    <div id="pendingList"></div>
+    <button id="finalizeBtn" class="success" disabled>Finalize Group</button>
+    <button id="clearBtn" class="secondary">Clear List</button>
+  </div>
+
+  <div class="card">
+    <h3>Last result</h3>
+    <div id="resultBox" class="muted">No group finalized yet.</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/volunteer.js"></script>
+</body>
+</html>

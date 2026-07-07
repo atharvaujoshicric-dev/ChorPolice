@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Police Scanner</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1 id="playerName">Police</h1>
+    <a href="#" class="logout" onclick="logout()">Logout</a>
+  </div>
+
+  <div class="card">
+    <h3>Catch a chor</h3>
+    <p class="muted">Scan the chor's personal QR code to catch them.</p>
+    <button id="startScanBtn">📷 Start Scanning</button>
+    <button id="stopScanBtn" class="secondary" style="display:none;">Stop Camera</button>
+    <div id="reader" style="display:none;"></div>
+  </div>
+
+  <div id="confirmCard" class="card" style="display:none;">
+    <h3>Confirm catch</h3>
+    <div id="confirmInfo"></div>
+    <button id="confirmBtn" class="danger">🚔 Confirm Catch</button>
+    <button id="cancelBtn" class="secondary">Cancel</button>
+  </div>
+
+  <div class="card">
+    <h3>Result</h3>
+    <div id="resultBox" class="muted">No catch yet.</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/police.js"></script>
+</body>
+</html>

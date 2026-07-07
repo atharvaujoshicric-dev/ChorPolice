@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Chor Police — Login</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>🚨 Chor Police</h1>
+  </div>
+
+  <div class="card">
+    <h2>Enter your code</h2>
+    <p class="muted">Get your login code from the game admin.</p>
+    <input id="codeInput" placeholder="e.g. AB12CD" autocapitalize="characters" autocomplete="off" />
+    <div id="err" class="error-msg" style="display:none;"></div>
+    <button id="loginBtn">Login</button>
+  </div>
+
+  <div class="card">
+    <p class="muted" style="margin:0;">Roles: Chor (thief), Police, Checkpost Volunteer, Admin — all use the same code login above. You'll be sent to the right screen automatically.</p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/login.js"></script>
+</body>
+</html>
