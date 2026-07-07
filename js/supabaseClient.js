@@ -2,8 +2,8 @@
 // FILL THESE IN with your Supabase project values
 // Project Settings > API
 // ============================================================
-const SUPABASE_URL = "https://kbjdfojyydatsqmrrnnf.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtiamRmb2p5eWRhdHNxbXJybm5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MTUzNDYsImV4cCI6MjA5ODk5MTM0Nn0.LQPinoL7kXF52i-8TdC68_zrv8Q9MjA3yqQprfuBouE";
+const SUPABASE_URL = "https://xjjfhmmokjvajmmwpcqe.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqamZobW1va2p2YWptbXdwY3FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MzExNDcsImV4cCI6MjA5OTAwNzE0N30.5v1WfHdQm4Wxx5Fq0GHg2fvlxAC52BbdYz-aAws1heo";
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
