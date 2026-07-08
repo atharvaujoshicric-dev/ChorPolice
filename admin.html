@@ -85,14 +85,15 @@
       <h3>Add Safe Zone</h3>
       <input id="newCheckpostName" placeholder="Safe Zone name (e.g. Nike Store)" />
       <input id="newCheckpostOrder" placeholder="Order number (e.g. 1)" type="number" />
+      <label class="muted">Hint shown to chors routed here next (optional)</label>
+      <textarea id="newCheckpostHint" rows="2" placeholder="e.g. Look for the store with a giant shoe outside"></textarea>
+      <label class="muted">Voucher / coupon shown once collected (optional)</label>
+      <input id="newCheckpostVoucher" placeholder="e.g. 10% off at this store, show this screen" />
       <button id="addCheckpostBtn">Add Safe Zone</button>
     </div>
     <div class="card">
       <h3>All Safe Zones</h3>
-      <table>
-        <thead><tr><th>#</th><th>Name</th><th></th></tr></thead>
-        <tbody id="checkpostsTable"></tbody>
-      </table>
+      <div id="checkpostsList"></div>
     </div>
   </div>
 
@@ -138,13 +139,18 @@
       <input id="setPenaltySeconds" type="number" />
       <label class="muted">Lifelines per chor</label>
       <input id="setLifelines" type="number" />
+      <label class="muted">Safe Ticket protection window (seconds)</label>
+      <input id="setSafeGrace" type="number" />
       <button id="saveSettingsBtn">Save Settings</button>
       <div id="settingsMsg"></div>
     </div>
     <div class="card">
       <h3>Danger zone</h3>
-      <button id="resetGameBtn" class="danger">Reset Game (wipe progress)</button>
-      <p class="muted">Keeps all players/zones, clears stickers, catches, lifelines & jail status.</p>
+      <button id="resetGameBtn" class="danger">Reset Progress</button>
+      <p class="muted">Keeps all players/zones, clears stickers, catches, lifelines, jail & hints.</p>
+      <button id="fullWipeBtn" class="danger" style="margin-top:14px;">Full Wipe — Delete Everyone & Zones</button>
+      <p class="muted">Deletes every chor/police/volunteer and every Safe Zone. Only the admin login survives. Use this to start a brand-new event from scratch.</p>
+      <p class="muted">Note: Supabase's own Table Editor "delete all rows" button will refuse with "DELETE requires a WHERE clause" — that's a safety guard on their REST API, not a bug. The buttons above run as proper database functions instead, so they work.</p>
     </div>
   </div>
 </div>

@@ -81,7 +81,11 @@ async function confirmCatch() {
 
   const resultBox = document.getElementById("resultBox");
   if (error) {
-    resultBox.innerHTML = `<span class="error-msg">${error.message}</span>`;
+    if (error.message.includes("Safe Ticket")) {
+      resultBox.innerHTML = `<div class="safe-ticket-banner">🛡️ ${error.message}</div>`;
+    } else {
+      resultBox.innerHTML = `<span class="error-msg">${error.message}</span>`;
+    }
   } else {
     const r = data[0];
     if (r.status === "eliminated") {

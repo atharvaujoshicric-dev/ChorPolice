@@ -297,3 +297,55 @@ a.logout {
   border: 1px solid var(--border); padding: 6px 12px; border-radius: 20px;
   white-space: nowrap; margin-top: 4px;
 }
+
+/* ---------- Hero / progress ring ---------- */
+.hero-card { display: flex; align-items: center; gap: 18px; }
+.progress-ring-wrap { position: relative; width: 130px; height: 130px; flex-shrink: 0; }
+.progress-ring-label {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-family: 'Barlow Condensed', sans-serif; font-size: 26px; font-weight: 800; color: var(--text);
+}
+.hero-info { flex: 1; }
+.code-display {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 26px; font-weight: 800; letter-spacing: 3px; margin-bottom: 10px; color: var(--text);
+}
+
+/* ---------- Safe Ticket / vouchers ---------- */
+.safe-ticket-banner {
+  background: linear-gradient(135deg, var(--lime), #7ee62a);
+  color: #0a2400; padding: 18px; border-radius: var(--radius);
+  text-align: center; font-size: 20px; font-weight: 800; margin-bottom: 14px;
+  box-shadow: 0 10px 24px rgba(198,255,61,0.25);
+}
+.safe-ticket-chip {
+  display: inline-block; background: rgba(198,255,61,0.15);
+  border: 1px solid var(--lime); color: var(--lime);
+  padding: 8px 14px; border-radius: 12px; font-weight: 700; margin-bottom: 8px; font-size: 14px;
+}
+.voucher-chip {
+  background: linear-gradient(135deg, rgba(255,90,46,0.15), rgba(198,255,61,0.1));
+  border: 1px dashed var(--orange); border-radius: 12px; padding: 10px 14px; color: var(--text);
+}
+.locked-row { padding: 10px 0; color: var(--muted); font-size: 13px; letter-spacing: 1px; }
+
+/* ---------- Zone cards (admin) ---------- */
+.zone-card {
+  border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px;
+  margin-bottom: 10px; background: rgba(255,255,255,0.02);
+}
+.zone-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.zone-card-head .zname { font-weight: 700; font-size: 16px; }
+.zone-card-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.zone-edit-panel { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); display: none; }
+.zone-edit-panel.open { display: block; }
+.zone-card-actions { display: flex; gap: 6px; }
+.zone-card-actions button {
+  width: auto; padding: 6px 12px; margin: 0; font-size: 12px;
+  text-transform: none; font-weight: 600; box-shadow: none;
+}
+
+textarea {
+  width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border);
+  background: var(--card2); color: var(--text); margin-bottom: 10px; font-family: inherit; font-size: 15px;
+}

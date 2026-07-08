@@ -35,7 +35,11 @@ async function loadOverview() {
       (c) => `<tr>
         <td>${c.name}</td>
         <td>${c.code}</td>
-        <td><span class="badge ${c.status}">${c.status}</span></td>
+        <td><span class="badge ${c.status}">${c.status}</span>${
+          c.protected_until && new Date(c.protected_until).getTime() > Date.now()
+            ? ' <span class="badge safe">🛡️ safe</span>'
+            : ""
+        }</td>
         <td>${"❤️".repeat(c.lifelines)}${"🖤".repeat(3 - c.lifelines)}</td>
         <td>${c.stickers} / ${c.total_checkposts}</td>
         <td>
@@ -153,25 +157,57 @@ async function deletePlayer(id) {
 document.getElementById("addCheckpostBtn").addEventListener("click", async () => {
   const name = document.getElementById("newCheckpostName").value.trim();
   const order = parseInt(document.getElementById("newCheckpostOrder").value) || 0;
+  const hint = document.getElementById("newCheckpostHint").value.trim() || null;
+  const voucher = document.getElementById("newCheckpostVoucher").value.trim() || null;
   if (!name) return;
-  await sb.from("checkposts").insert({ name, order_no: order });
+  await sb.from("checkposts").insert({ name, order_no: order, hint_text: hint, voucher_text: voucher });
   document.getElementById("newCheckpostName").value = "";
   document.getElementById("newCheckpostOrder").value = "";
+  document.getElementById("newCheckpostHint").value = "";
+  document.getElementById("newCheckpostVoucher").value = "";
   loadCheckposts();
   loadCheckpostOptions(document.getElementById("bulkCheckpost"));
 });
 
 async function loadCheckposts() {
   const { data } = await sb.from("checkposts").select("*").order("order_no");
-  document.getElementById("checkpostsTable").innerHTML = (data || [])
+  document.getElementById("checkpostsList").innerHTML = (data || [])
     .map(
-      (c) => `<tr>
-        <td>${c.order_no}</td>
-        <td>${c.name}</td>
-        <td><button class="secondary" style="width:auto;padding:4px 8px;" onclick="deleteCheckpost('${c.id}')">Delete</button></td>
-      </tr>`
+      (c) => `<div class="zone-card">
+        <div class="zone-card-head">
+          <div>
+            <div class="zname">#${c.order_no} — ${c.name}</div>
+            <div class="zone-card-meta">${c.hint_text ? "🔎 " + c.hint_text : "No hint set"}${c.voucher_text ? " · 🎁 " + c.voucher_text : ""}</div>
+          </div>
+          <div class="zone-card-actions">
+            <button class="secondary" onclick="toggleZoneEdit('${c.id}')">Edit</button>
+            <button class="danger" onclick="deleteCheckpost('${c.id}')">Delete</button>
+          </div>
+        </div>
+        <div class="zone-edit-panel" id="zedit-${c.id}">
+          <input id="zname-${c.id}" value="${c.name.replace(/"/g, '&quot;')}" placeholder="Name" />
+          <input id="zorder-${c.id}" type="number" value="${c.order_no}" placeholder="Order" />
+          <textarea id="zhint-${c.id}" rows="2" placeholder="Hint">${c.hint_text || ""}</textarea>
+          <input id="zvoucher-${c.id}" value="${c.voucher_text ? c.voucher_text.replace(/"/g, '&quot;') : ""}" placeholder="Voucher / coupon" />
+          <button class="success" onclick="saveZoneEdit('${c.id}')">Save</button>
+        </div>
+      </div>`
     )
-    .join("");
+    .join("") || `<p class="muted">No Safe Zones yet — add one above.</p>`;
+}
+
+function toggleZoneEdit(id) {
+  document.getElementById("zedit-" + id).classList.toggle("open");
+}
+
+async function saveZoneEdit(id) {
+  const name = document.getElementById(`zname-${id}`).value.trim();
+  const order_no = parseInt(document.getElementById(`zorder-${id}`).value) || 0;
+  const hint_text = document.getElementById(`zhint-${id}`).value.trim() || null;
+  const voucher_text = document.getElementById(`zvoucher-${id}`).value.trim() || null;
+  const { error } = await sb.from("checkposts").update({ name, order_no, hint_text, voucher_text }).eq("id", id);
+  if (error) alert(error.message);
+  loadCheckposts();
 }
 
 async function deleteCheckpost(id) {
@@ -255,15 +291,17 @@ async function loadSettings() {
   if (!data) return;
   document.getElementById("setPenaltySeconds").value = data.penalty_seconds;
   document.getElementById("setLifelines").value = data.lifelines_default;
+  document.getElementById("setSafeGrace").value = data.safe_zone_grace_seconds;
 }
 
 document.getElementById("saveSettingsBtn").addEventListener("click", async () => {
   const penalty_seconds = parseInt(document.getElementById("setPenaltySeconds").value) || 120;
   const lifelines_default = parseInt(document.getElementById("setLifelines").value) || 3;
+  const safe_zone_grace_seconds = parseInt(document.getElementById("setSafeGrace").value) || 90;
 
   const { error } = await sb
     .from("game_settings")
-    .update({ penalty_seconds, lifelines_default })
+    .update({ penalty_seconds, lifelines_default, safe_zone_grace_seconds })
     .eq("id", 1);
 
   const msg = document.getElementById("settingsMsg");
@@ -278,6 +316,18 @@ document.getElementById("resetGameBtn").addEventListener("click", async () => {
   if (error) alert(error.message);
   loadOverview();
   loadLogs();
+});
+
+document.getElementById("fullWipeBtn").addEventListener("click", async () => {
+  const sure = prompt('This deletes EVERY player (except admin) and EVERY Safe Zone. Type "DELETE" to confirm.');
+  if (sure !== "DELETE") return;
+  const { error } = await sb.rpc("admin_full_wipe", { p_admin_id: session.id });
+  if (error) {
+    alert(error.message);
+  } else {
+    alert("Everything wiped. Start adding fresh Safe Zones and players.");
+    loadAll();
+  }
 });
 
 // ---------- init ----------

@@ -3,17 +3,13 @@ document.getElementById("playerName").textContent = session.name;
 
 let html5QrCode = null;
 let scanning = false;
-let busy = false; // prevents overlapping calls while a scan is being processed
+let busy = false;
 
-// scan cooldown/debounce — the camera library can fire the same
-// decoded code many times per second while the QR stays in frame,
-// this was the cause of "double scanning". Ignore repeats of the
-// same code within COOLDOWN_MS.
 const COOLDOWN_MS = 4000;
 let lastCode = null;
 let lastCodeAt = 0;
 
-let recent = []; // {name, time, awarded}
+let recent = [];
 
 async function loadCheckpost() {
   if (!session.assigned_checkpost_id) {
@@ -43,7 +39,7 @@ async function processCode(rawCode) {
   if (!code) return;
 
   const now = Date.now();
-  if (code === lastCode && now - lastCodeAt < COOLDOWN_MS) return; // debounce duplicate scan
+  if (code === lastCode && now - lastCodeAt < COOLDOWN_MS) return;
   lastCode = code;
   lastCodeAt = now;
 
@@ -81,24 +77,29 @@ async function processCode(rawCode) {
   }
 
   const r = data[0];
-  if (r.newly_awarded) {
-    // Purely informational: shows whether this chor was first in / alone,
-    // or arrived alongside others recently at this same zone. Either way
-    // the sticker is always awarded — being first/alone is always safe.
-    const { count } = await sb
-      .from("stickers")
-      .select("id", { count: "exact", head: true })
-      .eq("checkpost_id", session.assigned_checkpost_id)
-      .gte("collected_at", new Date(Date.now() - 2 * 60 * 1000).toISOString());
+  let html = "";
 
-    const context = count && count > 1 ? `Safe — arrived with ${count - 1} other chor(s) recently` : "Safe ticket — first one in";
-    resultBox.innerHTML = `<div class="success-msg" style="font-size:18px;">✅ ${r.chor_name} — sticker awarded! (${r.total_stickers}/${r.total_checkposts})</div><div class="muted">${context}</div>`;
+  html += `<div class="safe-ticket-chip">🎫 Safe Ticket granted — protected ~90s</div>`;
+
+  if (r.newly_awarded) {
+    html += `<div class="success-msg" style="font-size:18px;">✅ ${r.chor_name} — sticker awarded! (${r.total_stickers}/${r.total_checkposts})</div>`;
+    if (r.voucher_text) {
+      html += `<div class="voucher-chip">🎁 Voucher unlocked: ${r.voucher_text}</div>`;
+    }
   } else {
-    resultBox.innerHTML = `<div class="muted" style="font-size:16px;">ℹ️ ${r.chor_name} already collected this zone's sticker. (${r.total_stickers}/${r.total_checkposts})</div>`;
+    html += `<div class="muted" style="font-size:16px;">ℹ️ ${r.chor_name} already collected this zone's sticker. (${r.total_stickers}/${r.total_checkposts})</div>`;
   }
+
+  if (r.zone_occupancy != null) {
+    const over = r.zone_occupancy > 10;
+    html += `<div class="muted" style="margin-top:6px;">Currently protected at this zone: ${r.zone_occupancy}${over ? " ⚠️ over capacity — use judgement on new arrivals" : " / 10"}</div>`;
+  }
+
   if (r.chor_status === "winner") {
-    resultBox.innerHTML += `<div class="winner-banner" style="margin-top:10px;">🏆 ${r.chor_name} just completed all zones!</div>`;
+    html += `<div class="winner-banner" style="margin-top:10px;">🏆 ${r.chor_name} just completed all zones!</div>`;
   }
+
+  resultBox.innerHTML = html;
 
   recent.unshift({ name: r.chor_name, time: Date.now(), awarded: r.newly_awarded });
   renderRecent();

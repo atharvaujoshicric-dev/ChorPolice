@@ -20,20 +20,45 @@
 
   <div id="statusBanner"></div>
 
+  <div class="card hero-card">
+    <div class="progress-ring-wrap">
+      <svg id="progressRing" viewBox="0 0 120 120" width="130" height="130">
+        <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="12" />
+        <circle id="progressArc" cx="60" cy="60" r="52" fill="none" stroke="url(#gradRing)" stroke-width="12" stroke-linecap="round" transform="rotate(-90 60 60)" />
+        <defs>
+          <linearGradient id="gradRing" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ff5a2e" />
+            <stop offset="100%" stop-color="#c6ff3d" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <div class="progress-ring-label" id="progressLabel">0/0</div>
+    </div>
+    <div class="hero-info">
+      <div class="muted" style="margin-bottom:4px;">Lifelines</div>
+      <div id="hearts" class="hearts"></div>
+    </div>
+  </div>
+
+  <div class="card" id="hintCard">
+    <h3>🔎 Your Next Clue</h3>
+    <div id="hintText" class="muted">Loading...</div>
+  </div>
+
   <div class="card" style="text-align:center;">
     <h3 style="margin-bottom:6px;">Your code</h3>
-    <div id="codeText" style="font-size:22px; font-weight:800; letter-spacing:2px; margin-bottom:10px;"></div>
-    <div class="qr-box"><img id="qrImg" width="220" height="220" alt="Your QR code" /></div>
+    <div id="codeText" class="code-display"></div>
+    <div class="qr-box"><img id="qrImg" width="200" height="200" alt="Your QR code" /></div>
     <p class="muted">Show this to a Safe Zone volunteer to collect a sticker, or to police if caught.</p>
   </div>
 
-  <div class="card">
-    <h3>Lifelines (tokens)</h3>
-    <div id="hearts" class="hearts"></div>
+  <div class="card" id="voucherCard" style="display:none;">
+    <h3>🎁 Your Vouchers</h3>
+    <div id="voucherList"></div>
   </div>
 
   <div class="card">
-    <h3>Passport <span id="progressCount" class="badge"></span></h3>
+    <h3>Zones collected</h3>
     <div id="checkpostList"></div>
   </div>
 
@@ -41,8 +66,8 @@
     <h3>Quick rules</h3>
     <ul class="muted">
       <li>Visit any Safe Zone to collect that zone's unique sticker (once each).</li>
-      <li>Each Safe Zone holds max 10 chors at a time — if it's full, wait outside.</li>
-      <li>Outside Safe Zones, police can catch you any time.</li>
+      <li>Every scan-in gives you a Safe Ticket — you can't be caught for a short window after.</li>
+      <li>Outside that window and outside Safe Zones, police can catch you any time.</li>
       <li>Caught → lose a life, 2 minutes in jail, then back in from any Safe Zone.</li>
       <li>3 lifelines total — lose all 3 and you're eliminated.</li>
       <li>Collect all 10 stickers to win!</li>
