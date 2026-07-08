@@ -418,10 +418,18 @@ $$ language plpgsql security definer;
 -- Reset progress only: keeps every player & zone, wipes stickers/
 -- catches/lifelines/jail/protection/hints so you can re-run the event.
 create or replace function reset_game(p_admin_id uuid) returns void as $$
+declare
+  v_lifelines_default int;
 begin
   perform assert_is_admin(p_admin_id);
+
+  select gs.lifelines_default into v_lifelines_default from game_settings gs where gs.id = 1;
+
   delete from catches where true;
   delete from stickers where true;
+
+  update players
+    set lifelines = v_lifelines_default,
         status = 'active',
         penalty_until = null,
         protected_until = null,
