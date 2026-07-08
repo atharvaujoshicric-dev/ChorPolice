@@ -38,9 +38,32 @@ async function loadOverview() {
         <td><span class="badge ${c.status}">${c.status}</span></td>
         <td>${"❤️".repeat(c.lifelines)}${"🖤".repeat(3 - c.lifelines)}</td>
         <td>${c.stickers} / ${c.total_checkposts}</td>
+        <td>
+          <button class="secondary" style="width:auto;padding:4px 8px;margin:2px;" onclick="adminClearJail('${c.chor_id}')">Release</button>
+          <button class="secondary" style="width:auto;padding:4px 8px;margin:2px;" onclick="adminRestore('${c.chor_id}')">Restore</button>
+          <button class="danger" style="width:auto;padding:4px 8px;margin:2px;" onclick="adminEliminate('${c.chor_id}')">Eliminate</button>
+        </td>
       </tr>`
     )
     .join("");
+}
+
+async function adminClearJail(chorId) {
+  const { error } = await sb.rpc("admin_clear_jail", { p_admin_id: session.id, p_chor_id: chorId });
+  if (error) alert(error.message);
+  loadOverview();
+}
+async function adminRestore(chorId) {
+  if (!confirm("Restore this chor to active with full lifelines?")) return;
+  const { error } = await sb.rpc("admin_restore_chor", { p_admin_id: session.id, p_chor_id: chorId });
+  if (error) alert(error.message);
+  loadOverview();
+}
+async function adminEliminate(chorId) {
+  if (!confirm("Force-eliminate this chor?")) return;
+  const { error } = await sb.rpc("admin_eliminate_chor", { p_admin_id: session.id, p_chor_id: chorId });
+  if (error) alert(error.message);
+  loadOverview();
 }
 
 // ---------- bulk add players ----------
@@ -192,6 +215,7 @@ async function loadLogs() {
         <td>${c.chor?.name || "-"}</td>
         <td>${c.police?.name || "-"}</td>
         <td>${c.resulted_in_elimination ? "Eliminated" : "Jailed"}</td>
+        <td><button class="secondary" style="width:auto;padding:4px 8px;" onclick="adminUndoCatch('${c.id}')">Undo</button></td>
       </tr>`
     )
     .join("");
@@ -211,6 +235,18 @@ async function loadLogs() {
       </tr>`
     )
     .join("");
+}
+
+async function adminUndoCatch(catchId) {
+  if (!confirm("Undo this catch? This restores the chor's life and clears any jail time.")) return;
+  const { data, error } = await sb.rpc("admin_undo_catch", { p_admin_id: session.id, p_catch_id: catchId });
+  if (error) {
+    alert(error.message);
+  } else {
+    alert(`Undone — ${data[0].chor_name} is back in the game.`);
+  }
+  loadLogs();
+  loadOverview();
 }
 
 // ---------- settings ----------
@@ -238,7 +274,8 @@ document.getElementById("saveSettingsBtn").addEventListener("click", async () =>
 
 document.getElementById("resetGameBtn").addEventListener("click", async () => {
   if (!confirm("This wipes ALL stickers, catches, and resets lifelines. Continue?")) return;
-  await sb.rpc("reset_game");
+  const { error } = await sb.rpc("reset_game", { p_admin_id: session.id });
+  if (error) alert(error.message);
   loadOverview();
   loadLogs();
 });

@@ -3,13 +3,15 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E" />
 <title>Chor Police — Login</title>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
 <div class="wrap">
-  <div class="topbar">
-    <h1>🚨 Chor Police</h1>
+  <div class="topbar" style="display:block;">
+    <div class="brand-eyebrow">Alpha Run Club · Pune</div>
+    <h1 class="brand-title">CHOR<span class="vs">vs</span>POLICE</h1>
   </div>
 
   <div class="card">
@@ -17,11 +19,11 @@
     <p class="muted">Get your login code from the game admin.</p>
     <input id="codeInput" placeholder="e.g. AB12CD" autocapitalize="characters" autocomplete="off" />
     <div id="err" class="error-msg" style="display:none;"></div>
-    <button id="loginBtn">Login</button>
+    <button id="loginBtn">Enter the Game</button>
   </div>
 
   <div class="card">
-    <p class="muted" style="margin:0;">Roles: Chor (thief), Police, Checkpost Volunteer, Admin — all use the same code login above. You'll be sent to the right screen automatically.</p>
+    <p class="muted" style="margin:0;">Roles: Chor, Police, Safe Zone Volunteer, Admin — all use the same code login above. You'll land on the right screen automatically.</p>
   </div>
 </div>
 

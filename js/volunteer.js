@@ -82,7 +82,17 @@ async function processCode(rawCode) {
 
   const r = data[0];
   if (r.newly_awarded) {
-    resultBox.innerHTML = `<div class="success-msg" style="font-size:18px;">✅ ${r.chor_name} — sticker awarded! (${r.total_stickers}/${r.total_checkposts})</div>`;
+    // Purely informational: shows whether this chor was first in / alone,
+    // or arrived alongside others recently at this same zone. Either way
+    // the sticker is always awarded — being first/alone is always safe.
+    const { count } = await sb
+      .from("stickers")
+      .select("id", { count: "exact", head: true })
+      .eq("checkpost_id", session.assigned_checkpost_id)
+      .gte("collected_at", new Date(Date.now() - 2 * 60 * 1000).toISOString());
+
+    const context = count && count > 1 ? `Safe — arrived with ${count - 1} other chor(s) recently` : "Safe ticket — first one in";
+    resultBox.innerHTML = `<div class="success-msg" style="font-size:18px;">✅ ${r.chor_name} — sticker awarded! (${r.total_stickers}/${r.total_checkposts})</div><div class="muted">${context}</div>`;
   } else {
     resultBox.innerHTML = `<div class="muted" style="font-size:16px;">ℹ️ ${r.chor_name} already collected this zone's sticker. (${r.total_stickers}/${r.total_checkposts})</div>`;
   }

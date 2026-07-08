@@ -15,10 +15,28 @@ create extension if not exists pgcrypto;
 -- MIGRATION CLEANUP (safe if you previously ran the old v1 schema)
 -- ------------------------------------------------------------
 drop function if exists finalize_checkpost_group(uuid, uuid[]);
+drop function if exists undo_last_catch(uuid);
 drop table if exists checkpost_visits cascade;
 alter table if exists game_settings drop column if exists group_size_required;
 alter table if exists catches drop column if exists lifelines_before;
 alter table if exists catches add column if not exists lifelines_before int not null default 0;
+
+-- ------------------------------------------------------------
+-- Small helper: raises if the given player id is not an admin.
+-- Used by every rule-overriding action below so that even a
+-- direct RPC call (not just the UI button) is blocked for
+-- non-admins.
+-- ------------------------------------------------------------
+create or replace function assert_is_admin(p_player_id uuid) returns void as $$
+declare
+  v_role text;
+begin
+  select pl.role into v_role from players pl where pl.id = p_player_id;
+  if v_role is distinct from 'admin' then
+    raise exception 'Not authorized: admin only';
+  end if;
+end;
+$$ language plpgsql security definer;
 
 -- ------------------------------------------------------------
 -- GAME SETTINGS (single row config)
@@ -133,8 +151,8 @@ declare
   v_name text;
   v_inserted boolean := false;
 begin
-  select status, penalty_until, name into v_status, v_penalty_until, v_name
-  from players where id = p_chor_id and role = 'chor';
+  select pl.status, pl.penalty_until, pl.name into v_status, v_penalty_until, v_name
+  from players pl where pl.id = p_chor_id and pl.role = 'chor';
 
   if v_name is null then
     raise exception 'Chor not found';
@@ -157,9 +175,9 @@ begin
   select
     v_inserted,
     v_name,
-    (select count(*)::int from stickers where chor_id = p_chor_id),
+    (select count(*)::int from stickers s where s.chor_id = p_chor_id),
     (select count(*)::int from checkposts),
-    (select status from players where id = p_chor_id);
+    (select pl2.status from players pl2 where pl2.id = p_chor_id);
 end;
 $$ language plpgsql security definer;
 
@@ -178,8 +196,11 @@ declare
   v_eliminated boolean := false;
   v_penalty_seconds int;
 begin
-  select lifelines, status, penalty_until into v_lifelines, v_status, v_penalty_until
-  from players where id = p_chor_id for update;
+  select pl.lifelines, pl.status, pl.penalty_until
+    into v_lifelines, v_status, v_penalty_until
+  from players pl
+  where pl.id = p_chor_id
+  for update;
 
   if v_lifelines is null then
     raise exception 'Chor not found';
@@ -194,70 +215,105 @@ begin
     raise exception 'Chor is already serving a penalty';
   end if;
 
-  select penalty_seconds into v_penalty_seconds from game_settings where id = 1;
+  select gs.penalty_seconds into v_penalty_seconds from game_settings gs where gs.id = 1;
 
   v_new_lifelines := v_lifelines - 1;
 
   if v_new_lifelines <= 0 then
     v_eliminated := true;
-    update players
+    update players pl
       set lifelines = 0, status = 'eliminated', penalty_until = null
-      where id = p_chor_id;
+      where pl.id = p_chor_id;
   else
-    update players
+    update players pl
       set lifelines = v_new_lifelines,
           penalty_until = now() + (v_penalty_seconds || ' seconds')::interval
-      where id = p_chor_id;
+      where pl.id = p_chor_id;
   end if;
 
   insert into catches (chor_id, police_id, lifelines_before, lifelines_after, resulted_in_elimination)
   values (p_chor_id, p_police_id, v_lifelines, v_new_lifelines, v_eliminated);
 
   return query
-    select p.id, p.name, p.lifelines, p.status, p.penalty_until
-    from players p where p.id = p_chor_id;
+    select pl.id, pl.name, pl.lifelines, pl.status, pl.penalty_until
+    from players pl where pl.id = p_chor_id;
 end;
 $$ language plpgsql security definer;
 
 -- ------------------------------------------------------------
--- RPC: undo the most recent catch made by this police officer
--- (safety net for double-scans / mis-scans). Only works within
--- 30 seconds of the catch.
+-- ADMIN-ONLY OVERRIDES
+-- Every function below re-checks role='admin' server-side, so
+-- even a direct RPC call from a non-admin session is rejected.
 -- ------------------------------------------------------------
-create or replace function undo_last_catch(p_police_id uuid)
+
+-- Undo ANY catch (not just your own, no time limit) — restores
+-- lifelines, clears jail, deletes the catch record.
+create or replace function admin_undo_catch(p_admin_id uuid, p_catch_id uuid)
 returns table (chor_id uuid, chor_name text) as $$
 declare
   v_catch record;
 begin
-  select * into v_catch
-  from catches
-  where police_id = p_police_id
-    and caught_at > now() - interval '30 seconds'
-  order by caught_at desc
-  limit 1
-  for update;
+  perform assert_is_admin(p_admin_id);
 
+  select c.* into v_catch from catches c where c.id = p_catch_id for update;
   if v_catch.id is null then
-    raise exception 'No recent catch to undo';
+    raise exception 'Catch not found';
   end if;
 
-  update players
+  update players pl
     set lifelines = v_catch.lifelines_before,
         status = 'active',
         penalty_until = null
-    where id = v_catch.chor_id;
+    where pl.id = v_catch.chor_id;
 
-  delete from catches where id = v_catch.id;
+  delete from catches c where c.id = v_catch.id;
 
-  return query select v_catch.chor_id, (select name from players where id = v_catch.chor_id);
+  return query select v_catch.chor_id, (select pl2.name from players pl2 where pl2.id = v_catch.chor_id);
 end;
 $$ language plpgsql security definer;
+
+-- Release a chor from jail immediately.
+create or replace function admin_clear_jail(p_admin_id uuid, p_chor_id uuid)
+returns void as $$
+begin
+  perform assert_is_admin(p_admin_id);
+  update players pl set penalty_until = null where pl.id = p_chor_id;
+end;
+$$ language plpgsql security definer;
+
+-- Fully restore a chor (e.g. after wrongly eliminated) to active
+-- with full lifelines, no jail. Keeps stickers already collected.
+create or replace function admin_restore_chor(p_admin_id uuid, p_chor_id uuid)
+returns void as $$
+declare
+  v_lifelines_default int;
+begin
+  perform assert_is_admin(p_admin_id);
+  select gs.lifelines_default into v_lifelines_default from game_settings gs where gs.id = 1;
+  update players pl
+    set status = 'active', lifelines = v_lifelines_default, penalty_until = null
+    where pl.id = p_chor_id;
+end;
+$$ language plpgsql security definer;
+
+-- Force-eliminate a chor (e.g. confirmed rule-breaking).
+create or replace function admin_eliminate_chor(p_admin_id uuid, p_chor_id uuid)
+returns void as $$
+begin
+  perform assert_is_admin(p_admin_id);
+  update players pl
+    set status = 'eliminated', lifelines = 0, penalty_until = null
+    where pl.id = p_chor_id;
+end;
+$$ language plpgsql security definer;
+
 
 -- ------------------------------------------------------------
 -- RPC: reset game (keeps players/checkposts, wipes progress)
 -- ------------------------------------------------------------
-create or replace function reset_game() returns void as $$
+create or replace function reset_game(p_admin_id uuid) returns void as $$
 begin
+  perform assert_is_admin(p_admin_id);
   delete from catches;
   delete from stickers;
   update players

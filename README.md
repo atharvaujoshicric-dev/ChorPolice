@@ -32,18 +32,28 @@ const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
 
 ## 5. How each role uses it live
 - **Chor**: logs in on their own phone → sees their QR, remaining lifelines, and which of the 10 zones they've collected.
-- **Safe Zone Volunteer**: logs in → sees their assigned zone → taps **Start Scanning** and just keeps scanning every chor who walks in. Each scan instantly awards that zone's sticker (or says "already collected" if they've been there before) — no extra steps, no batching. Staff still physically enforce the 10-person cap by eye.
-- **Police**: logs in → scans a chor caught outside a Safe Zone → confirms the catch. Lifelines drop, 2-minute jail starts automatically on the chor's own phone. A one-tap **Undo Last Catch** button appears for 30 seconds in case of a mis-scan.
-- **Admin**: **Live Status** for real-time standings, **Logs** for full catch/sticker history.
+- **Safe Zone Volunteer**: logs in → sees their assigned zone → taps **Start Scanning** and just keeps scanning every chor who walks in. Each scan instantly awards that zone's sticker (or says "already collected" if they've been there before) — no extra steps, no batching. Being first/alone at a zone is always safe and always gets the sticker; the UI just labels it "Safe ticket — first one in" vs "Safe — arrived with others" for clarity. Staff still physically enforce the 10-person cap by eye.
+- **Police**: logs in → scans a chor caught outside a Safe Zone → confirms the catch. Lifelines drop, 2-minute jail starts automatically on the chor's own phone. Police can no longer undo a catch themselves (see below).
+- **Admin**: **Live Status** for real-time standings and quick per-chor overrides, **Logs** for full catch/sticker history with the ability to undo any catch.
 
-## 6. About the double-scan fix
+## 6. Admin-only overrides (rule-affecting actions)
+Anything that can bypass the normal rules is restricted to Admin, and enforced **server-side** (not just hidden in the UI — the database functions themselves re-check that the caller's player id has `role = 'admin'` before doing anything):
+- **Undo any catch** (Logs tab → Undo button) — restores the chor's life and clears jail, no time limit, works on any catch by any officer.
+- **Release** — clear a chor's jail time immediately.
+- **Restore** — bring an eliminated chor back to active with full lifelines (keeps their collected stickers).
+- **Eliminate** — force-eliminate a chor manually.
+- **Reset Game** — wipes all progress event-wide.
+
+Police used to have a self-service "undo my last catch" button — that's been removed; only Admin can undo now.
+
+## 7. About the double-scan fix
 Camera QR scanners fire their callback many times per second while a code
 is in view, which was causing the same scan to be processed repeatedly.
 Fixed two ways:
 - **Client-side cooldown**: the same code is ignored for 4 seconds after a successful scan.
 - **Server-side idempotency**: awarding a sticker twice for the same chor+zone is a safe no-op (unique constraint), and catching an already-jailed chor is rejected — so even if a duplicate slips through, nothing bad happens.
 
-## 7. Winning / elimination
+## 8. Winning / elimination
 - A chor **wins** automatically the moment they've collected all 10 stickers.
 - A chor is **eliminated** automatically after their 3rd catch (0 lifelines left).
 - **Reset Game** (Settings tab) wipes all progress but keeps every player's code — useful for a second round.
@@ -51,3 +61,4 @@ Fixed two ways:
 ## Notes
 - Login is a simple 6-character code per person, no passwords — fine for a trusted live event, not for a public-security deployment.
 - Everything is mobile-first: big tap targets, no accidental zoom on inputs, works fine one-handed while walking around a mall.
+- Branded for **Alpha Run Club, Pune** — every screen shows the club name and a CHOR vs POLICE wordmark. Want a different accent color or an actual logo image instead of the wordmark? Easy to drop in — just say the word.
