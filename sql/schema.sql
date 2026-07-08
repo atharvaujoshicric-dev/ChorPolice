@@ -1,25 +1,38 @@
 -- ============================================================
--- CHOR POLICE GAME — SUPABASE SCHEMA
+-- CHOR POLICE (ALPHA) — SUPABASE SCHEMA v2
+-- Matches the official blueprint: 10 Safe Zones each giving one
+-- unique sticker, capacity 10/zone (human-enforced), passport +
+-- token (=lifelines) system, 2-min jail, unlimited restarts from
+-- any Safe Zone, 3 total lifelines then eliminated.
+--
 -- Run this whole file in Supabase SQL Editor (Project > SQL Editor > New query)
+-- Safe to re-run: drops & recreates functions/policies.
 -- ============================================================
 
 create extension if not exists pgcrypto;
+
+-- ------------------------------------------------------------
+-- MIGRATION CLEANUP (safe if you previously ran the old v1 schema)
+-- ------------------------------------------------------------
+drop function if exists finalize_checkpost_group(uuid, uuid[]);
+drop table if exists checkpost_visits cascade;
+alter table if exists game_settings drop column if exists group_size_required;
+alter table if exists catches drop column if exists lifelines_before;
+alter table if exists catches add column if not exists lifelines_before int not null default 0;
 
 -- ------------------------------------------------------------
 -- GAME SETTINGS (single row config)
 -- ------------------------------------------------------------
 create table if not exists game_settings (
   id int primary key default 1,
-  group_size_required int not null default 10,
   penalty_seconds int not null default 120,
   lifelines_default int not null default 3,
-  status text not null default 'setup' check (status in ('setup','running','ended')),
-  single_row boolean generated always as (true) stored unique
+  status text not null default 'setup' check (status in ('setup','running','ended'))
 );
 insert into game_settings (id) values (1) on conflict (id) do nothing;
 
 -- ------------------------------------------------------------
--- CHECKPOSTS
+-- CHECKPOSTS (Safe Zones)
 -- ------------------------------------------------------------
 create table if not exists checkposts (
   id uuid primary key default gen_random_uuid(),
@@ -44,26 +57,25 @@ create table if not exists players (
 );
 
 -- ------------------------------------------------------------
--- CHECKPOST VISITS (safe ticket / stamp per chor per checkpost)
+-- STICKERS — one per (chor, safe zone), collected once each
 -- ------------------------------------------------------------
-create table if not exists checkpost_visits (
+create table if not exists stickers (
   id uuid primary key default gen_random_uuid(),
   chor_id uuid not null references players(id) on delete cascade,
   checkpost_id uuid not null references checkposts(id) on delete cascade,
-  status text not null check (status in ('safe','stamped','vulnerable')),
-  group_size int not null,
-  visited_at timestamptz not null default now(),
+  collected_at timestamptz not null default now(),
   unique (chor_id, checkpost_id)
 );
 
 -- ------------------------------------------------------------
--- CATCH LOG
+-- CATCH LOG (also drives the "undo last catch" safety net)
 -- ------------------------------------------------------------
 create table if not exists catches (
   id uuid primary key default gen_random_uuid(),
   chor_id uuid not null references players(id) on delete cascade,
   police_id uuid not null references players(id) on delete cascade,
   caught_at timestamptz not null default now(),
+  lifelines_before int not null,
   lifelines_after int not null,
   resulted_in_elimination boolean not null default false
 );
@@ -76,74 +88,78 @@ values ('ADMIN1', 'Game Admin', 'admin', 0)
 on conflict (code) do nothing;
 
 -- ------------------------------------------------------------
--- WINNER TRIGGER: mark chor as winner once stamped on all checkposts
+-- WINNER TRIGGER: mark chor as winner once all zones collected
 -- ------------------------------------------------------------
 create or replace function check_winner() returns trigger as $$
 declare
   v_total int;
-  v_stamped int;
+  v_collected int;
   v_status text;
 begin
   select count(*) into v_total from checkposts;
-  select count(*) into v_stamped from checkpost_visits
-    where chor_id = new.chor_id and status = 'stamped';
+  select count(*) into v_collected from stickers where chor_id = new.chor_id;
   select status into v_status from players where id = new.chor_id;
 
-  if v_total > 0 and v_stamped >= v_total and v_status = 'active' then
+  if v_total > 0 and v_collected >= v_total and v_status = 'active' then
     update players set status = 'winner' where id = new.chor_id;
   end if;
   return new;
 end;
 $$ language plpgsql;
 
-drop trigger if exists trg_check_winner on checkpost_visits;
+drop trigger if exists trg_check_winner on stickers;
 create trigger trg_check_winner
-  after insert or update on checkpost_visits
+  after insert on stickers
   for each row execute function check_winner();
 
 -- ------------------------------------------------------------
--- RPC: finalize a scanned group at a checkpost
--- p_chor_ids: array of chor player ids scanned together
+-- RPC: collect a sticker at a safe zone (single instant scan)
+-- Idempotent: scanning the same chor at the same zone twice is
+-- a no-op the second time (fixes double-scan duplicates).
 -- ------------------------------------------------------------
-create or replace function finalize_checkpost_group(
-  p_checkpost_id uuid,
-  p_chor_ids uuid[]
-) returns table (chor_id uuid, name text, status text) as $$
+create or replace function collect_sticker(
+  p_chor_id uuid,
+  p_checkpost_id uuid
+) returns table (
+  newly_awarded boolean,
+  chor_name text,
+  total_stickers int,
+  total_checkposts int,
+  chor_status text
+) as $$
 declare
-  v_group_size int := coalesce(array_length(p_chor_ids, 1), 0);
-  v_required int;
   v_status text;
+  v_penalty_until timestamptz;
+  v_name text;
+  v_inserted boolean := false;
 begin
-  if v_group_size = 0 then
-    raise exception 'No chors scanned';
+  select status, penalty_until, name into v_status, v_penalty_until, v_name
+  from players where id = p_chor_id and role = 'chor';
+
+  if v_name is null then
+    raise exception 'Chor not found';
+  end if;
+  if v_status = 'eliminated' then
+    raise exception '% has been eliminated', v_name;
+  end if;
+  if v_penalty_until is not null and v_penalty_until > now() then
+    raise exception '% is still in jail', v_name;
   end if;
 
-  select group_size_required into v_required from game_settings where id = 1;
+  insert into stickers (chor_id, checkpost_id)
+  values (p_chor_id, p_checkpost_id)
+  on conflict (chor_id, checkpost_id) do nothing;
 
-  if v_group_size = 1 then
-    v_status := 'safe';
-  elsif v_group_size = v_required then
-    v_status := 'stamped';
-  else
-    v_status := 'vulnerable';
-  end if;
-
-  insert into checkpost_visits (chor_id, checkpost_id, status, group_size)
-  select unnest(p_chor_ids), p_checkpost_id, v_status, v_group_size
-  on conflict (chor_id, checkpost_id) do update
-    set status = case
-                    when checkpost_visits.status = 'stamped' then 'stamped'
-                    else excluded.status
-                  end,
-        group_size = excluded.group_size,
-        visited_at = now();
+  get diagnostics v_inserted = row_count;
+  v_inserted := (v_inserted::int = 1);
 
   return query
-    select p.id, p.name, cv.status
-    from players p
-    join checkpost_visits cv
-      on cv.chor_id = p.id and cv.checkpost_id = p_checkpost_id
-    where p.id = any(p_chor_ids);
+  select
+    v_inserted,
+    v_name,
+    (select count(*)::int from stickers where chor_id = p_chor_id),
+    (select count(*)::int from checkposts),
+    (select status from players where id = p_chor_id);
 end;
 $$ language plpgsql security definer;
 
@@ -168,15 +184,12 @@ begin
   if v_lifelines is null then
     raise exception 'Chor not found';
   end if;
-
   if v_status = 'eliminated' then
     raise exception 'Chor already eliminated';
   end if;
-
   if v_status = 'winner' then
     raise exception 'Chor already won the game';
   end if;
-
   if v_penalty_until is not null and v_penalty_until > now() then
     raise exception 'Chor is already serving a penalty';
   end if;
@@ -197,12 +210,46 @@ begin
       where id = p_chor_id;
   end if;
 
-  insert into catches (chor_id, police_id, lifelines_after, resulted_in_elimination)
-  values (p_chor_id, p_police_id, v_new_lifelines, v_eliminated);
+  insert into catches (chor_id, police_id, lifelines_before, lifelines_after, resulted_in_elimination)
+  values (p_chor_id, p_police_id, v_lifelines, v_new_lifelines, v_eliminated);
 
   return query
     select p.id, p.name, p.lifelines, p.status, p.penalty_until
     from players p where p.id = p_chor_id;
+end;
+$$ language plpgsql security definer;
+
+-- ------------------------------------------------------------
+-- RPC: undo the most recent catch made by this police officer
+-- (safety net for double-scans / mis-scans). Only works within
+-- 30 seconds of the catch.
+-- ------------------------------------------------------------
+create or replace function undo_last_catch(p_police_id uuid)
+returns table (chor_id uuid, chor_name text) as $$
+declare
+  v_catch record;
+begin
+  select * into v_catch
+  from catches
+  where police_id = p_police_id
+    and caught_at > now() - interval '30 seconds'
+  order by caught_at desc
+  limit 1
+  for update;
+
+  if v_catch.id is null then
+    raise exception 'No recent catch to undo';
+  end if;
+
+  update players
+    set lifelines = v_catch.lifelines_before,
+        status = 'active',
+        penalty_until = null
+    where id = v_catch.chor_id;
+
+  delete from catches where id = v_catch.id;
+
+  return query select v_catch.chor_id, (select name from players where id = v_catch.chor_id);
 end;
 $$ language plpgsql security definer;
 
@@ -212,7 +259,7 @@ $$ language plpgsql security definer;
 create or replace function reset_game() returns void as $$
 begin
   delete from catches;
-  delete from checkpost_visits;
+  delete from stickers;
   update players
     set lifelines = (select lifelines_default from game_settings where id = 1),
         status = 'active',
@@ -232,23 +279,22 @@ select
   p.status,
   p.lifelines,
   p.penalty_until,
-  count(cv.id) filter (where cv.status = 'stamped') as stamps,
+  count(s.id) as stickers,
   (select count(*) from checkposts) as total_checkposts
 from players p
-left join checkpost_visits cv on cv.chor_id = p.id
+left join stickers s on s.chor_id = p.id
 where p.role = 'chor'
 group by p.id;
 
 -- ------------------------------------------------------------
 -- ROW LEVEL SECURITY
--- This is a private live-event game controlled by trusted staff,
--- so we allow the anon key full read/write access.
--- For a public deployment, tighten these policies.
+-- Private live-event game run by trusted staff — anon key gets
+-- full read/write. Tighten for a public deployment.
 -- ------------------------------------------------------------
 alter table game_settings enable row level security;
 alter table checkposts enable row level security;
 alter table players enable row level security;
-alter table checkpost_visits enable row level security;
+alter table stickers enable row level security;
 alter table catches enable row level security;
 
 drop policy if exists "anon_all_game_settings" on game_settings;
@@ -260,8 +306,8 @@ create policy "anon_all_checkposts" on checkposts for all using (true) with chec
 drop policy if exists "anon_all_players" on players;
 create policy "anon_all_players" on players for all using (true) with check (true);
 
-drop policy if exists "anon_all_checkpost_visits" on checkpost_visits;
-create policy "anon_all_checkpost_visits" on checkpost_visits for all using (true) with check (true);
+drop policy if exists "anon_all_stickers" on stickers;
+create policy "anon_all_stickers" on stickers for all using (true) with check (true);
 
 drop policy if exists "anon_all_catches" on catches;
 create policy "anon_all_catches" on catches for all using (true) with check (true);

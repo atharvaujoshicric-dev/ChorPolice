@@ -33,7 +33,7 @@ function renderBanner(player) {
     return;
   }
   if (player.status === "winner") {
-    el.innerHTML = `<div class="winner-banner">🏆 You won the game!</div>`;
+    el.innerHTML = `<div class="winner-banner">🏆 You collected all 10 stickers — you won!</div>`;
     return;
   }
   if (penaltyUntil > now) {
@@ -45,7 +45,7 @@ function renderBanner(player) {
         refresh();
         return;
       }
-      el.innerHTML = `<div class="penalty-banner">🚔 Caught! Wait here: ${fmtCountdown(left)}</div>`;
+      el.innerHTML = `<div class="penalty-banner">🚔 In jail: ${fmtCountdown(left)}</div>`;
     };
     tick();
     penaltyTimer = setInterval(tick, 1000);
@@ -63,20 +63,18 @@ function renderHearts(lifelines) {
 
 async function renderCheckposts(chorId) {
   const { data: checkposts } = await sb.from("checkposts").select("*").order("order_no");
-  const { data: visits } = await sb.from("checkpost_visits").select("*").eq("chor_id", chorId);
+  const { data: stickers } = await sb.from("stickers").select("*").eq("chor_id", chorId);
 
-  const visitMap = {};
-  (visits || []).forEach((v) => (visitMap[v.checkpost_id] = v.status));
-
+  const collected = new Set((stickers || []).map((s) => s.checkpost_id));
   const list = checkposts || [];
-  const stamped = list.filter((c) => visitMap[c.id] === "stamped").length;
-  document.getElementById("progressCount").textContent = `${stamped} / ${list.length} stamped`;
+  document.getElementById("progressCount").textContent = `${collected.size} / ${list.length} stickers`;
 
   document.getElementById("checkpostList").innerHTML = list
     .map((c) => {
-      const st = visitMap[c.id] || "none";
-      const label = { safe: "Safe (no stamp)", stamped: "Stamped ✅", vulnerable: "Visited (no stamp)", none: "Not visited" }[st];
-      return `<div class="list-item"><span>${c.name}</span><span class="badge ${st}">${label}</span></div>`;
+      const got = collected.has(c.id);
+      return `<div class="list-item"><span>${c.name}</span><span class="badge ${got ? "stamped" : "none"}">${
+        got ? "Collected ✅" : "Not visited"
+      }</span></div>`;
     })
     .join("");
 }

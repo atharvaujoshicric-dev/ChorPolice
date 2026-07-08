@@ -5,13 +5,25 @@ let html5QrCode = null;
 let scanning = false;
 let pendingChor = null;
 
+// debounce — camera can fire the same code repeatedly per second
+const COOLDOWN_MS = 4000;
+let lastCode = null;
+let lastCodeAt = 0;
+
 async function onScanSuccess(decodedText) {
+  const code = decodedText.trim().toUpperCase();
+  const now = Date.now();
+  if (code === lastCode && now - lastCodeAt < COOLDOWN_MS) return;
+  lastCode = code;
+  lastCodeAt = now;
+
   await stopScan();
-  await lookupChor(decodedText);
+  await lookupChor(code);
 }
 
 async function lookupChor(rawCode) {
   const code = rawCode.trim().toUpperCase();
+  if (!code) return;
 
   const { data, error } = await sb.from("players").select("*").eq("code", code).eq("role", "chor").maybeSingle();
 
@@ -73,12 +85,27 @@ async function confirmCatch() {
   } else {
     const r = data[0];
     if (r.status === "eliminated") {
-      resultBox.innerHTML = `<div class="eliminated-banner">${r.name} used their last lifeline — ELIMINATED</div>`;
+      resultBox.innerHTML = `<div class="eliminated-banner">${r.name} used their last life — ELIMINATED</div>`;
     } else {
-      resultBox.innerHTML = `<div class="penalty-banner">${r.name} caught! 2 min penalty. Lifelines left: ${r.lifelines}</div>`;
+      resultBox.innerHTML = `<div class="penalty-banner">${r.name} caught! 2 min jail. Lifelines left: ${r.lifelines}</div>`;
     }
+    document.getElementById("undoBtn").style.display = "block";
   }
   pendingChor = null;
+}
+
+async function undoLastCatch() {
+  const btn = document.getElementById("undoBtn");
+  btn.disabled = true;
+  const { data, error } = await sb.rpc("undo_last_catch", { p_police_id: session.id });
+  btn.disabled = false;
+  const resultBox = document.getElementById("resultBox");
+  if (error) {
+    resultBox.innerHTML = `<span class="error-msg">${error.message}</span>`;
+  } else {
+    resultBox.innerHTML = `<div class="success-msg">Undone — ${data[0].chor_name} is back in the game.</div>`;
+    btn.style.display = "none";
+  }
 }
 
 document.getElementById("startScanBtn").addEventListener("click", startScan);
@@ -88,6 +115,7 @@ document.getElementById("cancelBtn").addEventListener("click", () => {
   pendingChor = null;
   document.getElementById("confirmCard").style.display = "none";
 });
+document.getElementById("undoBtn").addEventListener("click", undoLastCatch);
 
 document.getElementById("manualLookupBtn").addEventListener("click", () => {
   const input = document.getElementById("manualCode");

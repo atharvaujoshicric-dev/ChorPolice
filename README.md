@@ -1,41 +1,53 @@
-# Chor Police — Live Game System
+# ALPHA — Chor vs Police — Live Game System
+
+Matches the official event blueprint: 10 Safe Zones each give one unique
+sticker, zones hold up to 10 chors at a time (staff-enforced), a chor has
+3 lifelines total, 2-minute jail per catch, and can resume from **any**
+Safe Zone after release. Collect all 10 stickers to win.
 
 ## 1. Supabase setup
 1. Create a project at https://supabase.com
-2. Go to **SQL Editor** → paste the entire contents of `sql/schema.sql` → Run.
-3. Go to **Project Settings → API** → copy your **Project URL** and **anon public key**.
+2. **SQL Editor** → paste all of `sql/schema.sql` → Run.
+   (Safe to re-run — it cleans up the old v1 schema automatically if you had it.)
+3. **Project Settings → API** → copy your **Project URL** and **anon public key**.
 
 ## 2. Configure the app
-Open `js/supabaseClient.js` and replace:
+Edit `js/supabaseClient.js`:
 ```js
 const SUPABASE_URL = "YOUR_SUPABASE_URL";
 const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
 ```
 
 ## 3. Deploy to GitHub Pages
-1. Push this whole folder to a GitHub repo.
-2. Repo → **Settings → Pages** → Source: `main` branch, root folder.
-3. Your site will be live at `https://<username>.github.io/<repo>/`.
-4. **Important:** camera-based QR scanning requires HTTPS — GitHub Pages already serves over HTTPS, so this works out of the box.
+1. Push the folder to a GitHub repo.
+2. Repo → **Settings → Pages** → Source: `main` branch, root.
+3. Live at `https://<username>.github.io/<repo>/`. HTTPS is automatic, which QR camera scanning requires.
 
-## 4. Run the game
-1. Login with code **ADMIN1** on the site → go to **Admin**.
-2. **Checkposts tab** → add all checkposts.
-3. **Players tab** → add all chors, police, and checkpost volunteers (assign each volunteer to one checkpost). Each gets an auto-generated login code — write these on paper/cards to hand out, or read from the Players table.
-4. **Settings tab** → confirm group size (default 10), penalty seconds (default 120), lifelines (default 3).
-5. Hand each participant their code:
-   - **Chor** → logs in on their own phone at the site → sees their personal QR + lifelines + checkpost progress.
-   - **Police** → logs in → scans a chor's QR to catch them.
-   - **Volunteer** → logs in → sees their assigned checkpost → scans every chor who arrives, then taps **Finalize Group** once done:
-     - 1 chor scanned → Safe (no stamp)
-     - exactly 10 scanned together → Stamped (counts toward winning)
-     - any other number → no stamp (police can catch them)
-   - **Admin** → watch the **Live Status** tab for real-time standings, and **Catch Log** for history.
+## 4. Set up the event (fast path for ~200 people)
+1. Login with **`ADMIN1`** → change this code immediately (Supabase Table Editor → `players` → edit that row's `code`).
+2. **Safe Zones tab** → add all 10 zones.
+3. **Players tab → Bulk add** → paste one name per line, pick role (Chor / Police / Volunteer — for volunteers also pick their zone), hit **Generate Codes & Add All**. Do this once for your 180 chors, once for 20 police, and once per zone for volunteers.
+4. **Print Cards tab** → pick a role → **Load Cards** → **Print**. Gives you a grid of name + code + QR per person, ready to cut into badges/wristbands before the event — no need to hand out codes verbally.
+5. **Settings tab** → confirm jail time (default 120s) and lifelines (default 3).
 
-## 5. Winning
-A chor automatically becomes a **winner** the moment they've been stamped at every checkpost.
-A chor is automatically **eliminated** after their 3rd catch (0 lifelines left).
+## 5. How each role uses it live
+- **Chor**: logs in on their own phone → sees their QR, remaining lifelines, and which of the 10 zones they've collected.
+- **Safe Zone Volunteer**: logs in → sees their assigned zone → taps **Start Scanning** and just keeps scanning every chor who walks in. Each scan instantly awards that zone's sticker (or says "already collected" if they've been there before) — no extra steps, no batching. Staff still physically enforce the 10-person cap by eye.
+- **Police**: logs in → scans a chor caught outside a Safe Zone → confirms the catch. Lifelines drop, 2-minute jail starts automatically on the chor's own phone. A one-tap **Undo Last Catch** button appears for 30 seconds in case of a mis-scan.
+- **Admin**: **Live Status** for real-time standings, **Logs** for full catch/sticker history.
+
+## 6. About the double-scan fix
+Camera QR scanners fire their callback many times per second while a code
+is in view, which was causing the same scan to be processed repeatedly.
+Fixed two ways:
+- **Client-side cooldown**: the same code is ignored for 4 seconds after a successful scan.
+- **Server-side idempotency**: awarding a sticker twice for the same chor+zone is a safe no-op (unique constraint), and catching an already-jailed chor is rejected — so even if a duplicate slips through, nothing bad happens.
+
+## 7. Winning / elimination
+- A chor **wins** automatically the moment they've collected all 10 stickers.
+- A chor is **eliminated** automatically after their 3rd catch (0 lifelines left).
+- **Reset Game** (Settings tab) wipes all progress but keeps every player's code — useful for a second round.
 
 ## Notes
-- To reset between rounds/events: Admin → Settings tab → **Reset Game** (keeps all players & checkposts, wipes progress).
-- Security: this uses simple code-based login (no passwords) with a permissive Supabase anon policy — fine for a trusted live event. Don't reuse this schema for anything requiring strong security.
+- Login is a simple 6-character code per person, no passwords — fine for a trusted live event, not for a public-security deployment.
+- Everything is mobile-first: big tap targets, no accidental zoom on inputs, works fine one-handed while walking around a mall.

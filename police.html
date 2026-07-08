@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <title>Police Scanner</title>
 <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -15,7 +15,7 @@
 
   <div class="card">
     <h3>Catch a chor</h3>
-    <p class="muted">Scan the chor's personal QR code to catch them.</p>
+    <p class="muted">Scan the chor's personal QR code to catch them (outside a Safe Zone).</p>
     <button id="startScanBtn">📷 Start Scanning</button>
     <button id="stopScanBtn" class="secondary" style="display:none;">Stop Camera</button>
     <div id="reader" style="display:none;"></div>
@@ -34,6 +34,7 @@
   <div class="card">
     <h3>Result</h3>
     <div id="resultBox" class="muted">No catch yet.</div>
+    <button id="undoBtn" class="secondary" style="display:none;">↩ Undo Last Catch</button>
   </div>
 </div>
 

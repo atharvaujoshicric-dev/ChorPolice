@@ -1,4 +1,5 @@
 const session = requireRole("admin");
+let currentPlayerFilter = "chor";
 
 // ---------- tabs ----------
 document.querySelectorAll(".tab-btn").forEach((btn) => {
@@ -10,71 +11,106 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
   });
 });
 
+document.querySelectorAll(".pfilter-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".pfilter-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentPlayerFilter = btn.dataset.role;
+    loadPlayers();
+  });
+});
+
 // ---------- overview ----------
 async function loadOverview() {
   const { data } = await sb.from("chor_progress").select("*").order("name");
-  document.getElementById("chorTable").innerHTML = (data || [])
+  const list = data || [];
+  const active = list.filter((c) => c.status === "active").length;
+  const eliminated = list.filter((c) => c.status === "eliminated").length;
+  const winners = list.filter((c) => c.status === "winner").length;
+  document.getElementById("overviewCounts").textContent =
+    `(${list.length} total — ${active} active, ${eliminated} eliminated, ${winners} won)`;
+
+  document.getElementById("chorTable").innerHTML = list
     .map(
       (c) => `<tr>
         <td>${c.name}</td>
         <td>${c.code}</td>
         <td><span class="badge ${c.status}">${c.status}</span></td>
         <td>${"❤️".repeat(c.lifelines)}${"🖤".repeat(3 - c.lifelines)}</td>
-        <td>${c.stamps} / ${c.total_checkposts}</td>
+        <td>${c.stickers} / ${c.total_checkposts}</td>
       </tr>`
     )
     .join("");
 }
 
-// ---------- players ----------
-async function loadCheckpostOptions() {
+// ---------- bulk add players ----------
+async function loadCheckpostOptions(selectEl) {
   const { data } = await sb.from("checkposts").select("*").order("order_no");
-  const sel = document.getElementById("newCheckpost");
-  sel.innerHTML = (data || []).map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
+  selectEl.innerHTML = (data || []).map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
 }
 
-document.getElementById("newRole").addEventListener("change", (e) => {
-  document.getElementById("newCheckpost").style.display = e.target.value === "volunteer" ? "block" : "none";
+document.getElementById("bulkRole").addEventListener("change", (e) => {
+  document.getElementById("bulkCheckpost").style.display = e.target.value === "volunteer" ? "block" : "none";
 });
 
-document.getElementById("addPlayerBtn").addEventListener("click", async () => {
-  const name = document.getElementById("newName").value.trim();
-  const role = document.getElementById("newRole").value;
-  const checkpostId = document.getElementById("newCheckpost").value || null;
-  const resultEl = document.getElementById("newPlayerResult");
+document.getElementById("bulkAddBtn").addEventListener("click", async () => {
+  const names = document
+    .getElementById("bulkNames")
+    .value.split("\n")
+    .map((n) => n.trim())
+    .filter(Boolean);
+  const role = document.getElementById("bulkRole").value;
+  const checkpostId = document.getElementById("bulkCheckpost").value || null;
+  const resultEl = document.getElementById("bulkResult");
 
-  if (!name) { resultEl.innerHTML = `<span class="error-msg">Enter a name</span>`; return; }
+  if (names.length === 0) {
+    resultEl.innerHTML = `<span class="error-msg">Enter at least one name</span>`;
+    return;
+  }
 
-  const code = genCode();
   const { data: settings } = await sb.from("game_settings").select("lifelines_default").eq("id", 1).single();
+  const lifelinesDefault = settings?.lifelines_default || 3;
 
-  const insertObj = {
-    code,
+  const rows = names.map((name) => ({
+    code: genCode(),
     name,
     role,
-    lifelines: role === "chor" ? (settings?.lifelines_default || 3) : 0,
+    lifelines: role === "chor" ? lifelinesDefault : 0,
     assigned_checkpost_id: role === "volunteer" ? checkpostId : null,
-  };
+  }));
 
-  const { data, error } = await sb.from("players").insert(insertObj).select().single();
+  const btn = document.getElementById("bulkAddBtn");
+  btn.disabled = true;
+  btn.textContent = `Adding ${rows.length}...`;
+
+  const { data, error } = await sb.from("players").insert(rows).select();
+
+  btn.disabled = false;
+  btn.textContent = "Generate Codes & Add All";
 
   if (error) {
     resultEl.innerHTML = `<span class="error-msg">${error.message}</span>`;
   } else {
-    resultEl.innerHTML = `<div class="success-msg">Added ${data.name} — code: <b>${data.code}</b></div>`;
-    document.getElementById("newName").value = "";
+    resultEl.innerHTML = `<div class="success-msg">Added ${data.length} players.</div>` +
+      `<table><thead><tr><th>Name</th><th>Code</th></tr></thead><tbody>` +
+      data.map((p) => `<tr><td>${p.name}</td><td>${p.code}</td></tr>`).join("") +
+      `</tbody></table>`;
+    document.getElementById("bulkNames").value = "";
   }
   loadPlayers();
 });
 
 async function loadPlayers() {
-  const { data } = await sb.from("players").select("*, checkposts(name)").order("role").order("name");
+  const { data } = await sb
+    .from("players")
+    .select("*, checkposts(name)")
+    .eq("role", currentPlayerFilter)
+    .order("name");
+
   document.getElementById("playersTable").innerHTML = (data || [])
-    .filter((p) => p.role !== "admin")
     .map(
       (p) => `<tr>
         <td>${p.name}</td>
-        <td>${p.role}</td>
         <td>${p.code}</td>
         <td>${p.checkposts ? p.checkposts.name : "-"}</td>
         <td><button class="secondary" style="width:auto;padding:4px 8px;" onclick="deletePlayer('${p.id}')">Delete</button></td>
@@ -99,7 +135,7 @@ document.getElementById("addCheckpostBtn").addEventListener("click", async () =>
   document.getElementById("newCheckpostName").value = "";
   document.getElementById("newCheckpostOrder").value = "";
   loadCheckposts();
-  loadCheckpostOptions();
+  loadCheckpostOptions(document.getElementById("bulkCheckpost"));
 });
 
 async function loadCheckposts() {
@@ -116,11 +152,30 @@ async function loadCheckposts() {
 }
 
 async function deleteCheckpost(id) {
-  if (!confirm("Delete this checkpost? Related visits will also be removed.")) return;
+  if (!confirm("Delete this Safe Zone? Related stickers will also be removed.")) return;
   await sb.from("checkposts").delete().eq("id", id);
   loadCheckposts();
-  loadCheckpostOptions();
+  loadCheckpostOptions(document.getElementById("bulkCheckpost"));
 }
+
+// ---------- print cards ----------
+document.getElementById("loadPrintBtn").addEventListener("click", async () => {
+  const role = document.getElementById("printRole").value;
+  const { data } = await sb.from("players").select("*").eq("role", role).order("name");
+
+  document.getElementById("printArea").innerHTML = (data || [])
+    .map(
+      (p) => `<div class="print-card">
+        <img width="140" height="140" src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(p.code)}" />
+        <div class="pname">${p.name}</div>
+        <div class="pcode">${p.code}</div>
+        <div style="font-size:11px;color:#555;">${p.role}</div>
+      </div>`
+    )
+    .join("") || "<p>No players in this role yet.</p>";
+});
+
+document.getElementById("doPrintBtn").addEventListener("click", () => window.print());
 
 // ---------- logs ----------
 async function loadLogs() {
@@ -136,25 +191,23 @@ async function loadLogs() {
         <td>${new Date(c.caught_at).toLocaleTimeString()}</td>
         <td>${c.chor?.name || "-"}</td>
         <td>${c.police?.name || "-"}</td>
-        <td>${c.resulted_in_elimination ? "Eliminated" : "Penalty"}</td>
+        <td>${c.resulted_in_elimination ? "Eliminated" : "Jailed"}</td>
       </tr>`
     )
     .join("");
 
-  const { data: visits } = await sb
-    .from("checkpost_visits")
+  const { data: stickers } = await sb
+    .from("stickers")
     .select("*, chor:chor_id(name), checkposts(name)")
-    .order("visited_at", { ascending: false })
-    .limit(100);
+    .order("collected_at", { ascending: false })
+    .limit(150);
 
-  document.getElementById("visitsTable").innerHTML = (visits || [])
+  document.getElementById("visitsTable").innerHTML = (stickers || [])
     .map(
       (v) => `<tr>
-        <td>${new Date(v.visited_at).toLocaleTimeString()}</td>
+        <td>${new Date(v.collected_at).toLocaleTimeString()}</td>
         <td>${v.chor?.name || "-"}</td>
         <td>${v.checkposts?.name || "-"}</td>
-        <td>${v.group_size}</td>
-        <td><span class="badge ${v.status}">${v.status}</span></td>
       </tr>`
     )
     .join("");
@@ -164,19 +217,17 @@ async function loadLogs() {
 async function loadSettings() {
   const { data } = await sb.from("game_settings").select("*").eq("id", 1).single();
   if (!data) return;
-  document.getElementById("setGroupSize").value = data.group_size_required;
   document.getElementById("setPenaltySeconds").value = data.penalty_seconds;
   document.getElementById("setLifelines").value = data.lifelines_default;
 }
 
 document.getElementById("saveSettingsBtn").addEventListener("click", async () => {
-  const group_size_required = parseInt(document.getElementById("setGroupSize").value) || 10;
   const penalty_seconds = parseInt(document.getElementById("setPenaltySeconds").value) || 120;
   const lifelines_default = parseInt(document.getElementById("setLifelines").value) || 3;
 
   const { error } = await sb
     .from("game_settings")
-    .update({ group_size_required, penalty_seconds, lifelines_default })
+    .update({ penalty_seconds, lifelines_default })
     .eq("id", 1);
 
   const msg = document.getElementById("settingsMsg");
@@ -186,7 +237,7 @@ document.getElementById("saveSettingsBtn").addEventListener("click", async () =>
 });
 
 document.getElementById("resetGameBtn").addEventListener("click", async () => {
-  if (!confirm("This wipes ALL stamps, catches, and resets lifelines. Continue?")) return;
+  if (!confirm("This wipes ALL stickers, catches, and resets lifelines. Continue?")) return;
   await sb.rpc("reset_game");
   loadOverview();
   loadLogs();
@@ -197,7 +248,7 @@ function loadAll() {
   loadOverview();
   loadPlayers();
   loadCheckposts();
-  loadCheckpostOptions();
+  loadCheckpostOptions(document.getElementById("bulkCheckpost"));
   loadLogs();
   loadSettings();
 }

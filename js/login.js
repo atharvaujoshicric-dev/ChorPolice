@@ -23,6 +23,12 @@ async function doLogin() {
   const code = codeInput.value.trim().toUpperCase();
   if (!code) return;
 
+  if (SUPABASE_URL.includes("YOUR_SUPABASE_URL") || SUPABASE_ANON_KEY.includes("YOUR_SUPABASE_ANON_KEY")) {
+    err.textContent = "Setup incomplete: js/supabaseClient.js still has placeholder URL/key. Edit that file with your real Supabase project values.";
+    err.style.display = "block";
+    return;
+  }
+
   loginBtn.disabled = true;
   loginBtn.textContent = "Checking...";
 
@@ -31,8 +37,13 @@ async function doLogin() {
   loginBtn.disabled = false;
   loginBtn.textContent = "Login";
 
-  if (error || !data) {
-    err.textContent = "Invalid code. Please check with the admin.";
+  if (error) {
+    err.textContent = "Server error: " + error.message;
+    err.style.display = "block";
+    return;
+  }
+  if (!data) {
+    err.textContent = `No player found with code "${code}". Check the code, or ask admin to confirm it exists in the players table.`;
     err.style.display = "block";
     return;
   }

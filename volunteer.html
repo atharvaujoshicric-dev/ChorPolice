@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>Checkpost Volunteer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Safe Zone Volunteer</title>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -14,31 +14,28 @@
   </div>
 
   <div class="card">
-    <h3>Your checkpost</h3>
+    <h3>Your Safe Zone</h3>
     <div id="checkpostName" class="badge stamped" style="font-size:16px;"></div>
+    <p class="muted" style="margin-top:8px;">Remember: max 10 chors physically inside at once. Scan each chor as they arrive — sticker is awarded instantly.</p>
   </div>
 
   <div class="card">
-    <h3>Scan chors</h3>
     <button id="startScanBtn">📷 Start Scanning</button>
     <button id="stopScanBtn" class="secondary" style="display:none;">Stop Camera</button>
     <div id="reader" style="display:none;"></div>
-    <div id="scanMsg" class="muted"></div>
     <p class="muted" style="margin-top:12px;">Camera not working? Type the chor's code instead:</p>
     <input id="manualCode" placeholder="e.g. AB12CD" autocapitalize="characters" autocomplete="off" />
-    <button id="manualAddBtn" class="secondary">Add by Code</button>
+    <button id="manualAddBtn" class="secondary">Award Sticker by Code</button>
   </div>
 
   <div class="card">
-    <h3>Pending group (<span id="pendingCount">0</span>)</h3>
-    <div id="pendingList"></div>
-    <button id="finalizeBtn" class="success" disabled>Finalize Group</button>
-    <button id="clearBtn" class="secondary">Clear List</button>
+    <h3>Last scan</h3>
+    <div id="resultBox" class="muted">No scans yet.</div>
   </div>
 
   <div class="card">
-    <h3>Last result</h3>
-    <div id="resultBox" class="muted">No group finalized yet.</div>
+    <h3>Recent activity at this zone</h3>
+    <div id="recentList" class="muted">Nothing yet.</div>
   </div>
 </div>
 

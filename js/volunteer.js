@@ -1,55 +1,98 @@
 const session = requireRole("volunteer");
 document.getElementById("playerName").textContent = session.name;
 
-let pending = []; // {id, name, code}
 let html5QrCode = null;
 let scanning = false;
+let busy = false; // prevents overlapping calls while a scan is being processed
+
+// scan cooldown/debounce — the camera library can fire the same
+// decoded code many times per second while the QR stays in frame,
+// this was the cause of "double scanning". Ignore repeats of the
+// same code within COOLDOWN_MS.
+const COOLDOWN_MS = 4000;
+let lastCode = null;
+let lastCodeAt = 0;
+
+let recent = []; // {name, time, awarded}
 
 async function loadCheckpost() {
   if (!session.assigned_checkpost_id) {
-    document.getElementById("checkpostName").textContent = "No checkpost assigned — ask admin";
+    document.getElementById("checkpostName").textContent = "No safe zone assigned — ask admin";
     return;
   }
   const { data } = await sb.from("checkposts").select("*").eq("id", session.assigned_checkpost_id).single();
-  document.getElementById("checkpostName").textContent = data ? data.name : "Unknown checkpost";
+  document.getElementById("checkpostName").textContent = data ? data.name : "Unknown zone";
 }
 loadCheckpost();
 
-function renderPending() {
-  document.getElementById("pendingCount").textContent = pending.length;
-  document.getElementById("pendingList").innerHTML = pending
+function renderRecent() {
+  document.getElementById("recentList").innerHTML = recent
+    .slice(0, 8)
     .map(
-      (p, i) =>
-        `<span class="pending-chip">${p.name} <button onclick="removePending(${i})">✕</button></span>`
+      (r) =>
+        `<div class="list-item"><span>${r.name}</span><span class="badge ${r.awarded ? "stamped" : "none"}">${
+          r.awarded ? "Sticker awarded" : "Already had it"
+        }</span></div>`
     )
-    .join("");
-  document.getElementById("finalizeBtn").disabled = pending.length === 0;
+    .join("") || "Nothing yet.";
 }
 
-function removePending(i) {
-  pending.splice(i, 1);
-  renderPending();
-}
+async function processCode(rawCode) {
+  if (busy) return;
+  const code = rawCode.trim().toUpperCase();
+  if (!code) return;
 
-async function onScanSuccess(decodedText) {
-  const code = decodedText.trim().toUpperCase();
-  if (pending.find((p) => p.code === code)) return; // already added
+  const now = Date.now();
+  if (code === lastCode && now - lastCodeAt < COOLDOWN_MS) return; // debounce duplicate scan
+  lastCode = code;
+  lastCodeAt = now;
 
-  const { data, error } = await sb.from("players").select("*").eq("code", code).eq("role", "chor").maybeSingle();
-  const msg = document.getElementById("scanMsg");
-
-  if (error || !data) {
-    msg.textContent = `⚠️ "${code}" is not a valid chor code.`;
-    return;
-  }
-  if (data.status !== "active") {
-    msg.textContent = `⚠️ ${data.name} is ${data.status}, cannot check in.`;
+  if (!session.assigned_checkpost_id) {
+    document.getElementById("resultBox").innerHTML = `<span class="error-msg">You have no safe zone assigned. Ask the admin.</span>`;
     return;
   }
 
-  pending.push({ id: data.id, name: data.name, code: data.code });
-  msg.textContent = `✅ Added ${data.name}`;
-  renderPending();
+  busy = true;
+  const resultBox = document.getElementById("resultBox");
+  resultBox.innerHTML = `<span class="muted">Looking up ${code}...</span>`;
+
+  const { data: chor, error: lookupErr } = await sb
+    .from("players")
+    .select("*")
+    .eq("code", code)
+    .eq("role", "chor")
+    .maybeSingle();
+
+  if (lookupErr || !chor) {
+    resultBox.innerHTML = `<span class="error-msg">"${code}" is not a valid chor code.</span>`;
+    busy = false;
+    return;
+  }
+
+  const { data, error } = await sb.rpc("collect_sticker", {
+    p_chor_id: chor.id,
+    p_checkpost_id: session.assigned_checkpost_id,
+  });
+
+  if (error) {
+    resultBox.innerHTML = `<span class="error-msg">${chor.name}: ${error.message}</span>`;
+    busy = false;
+    return;
+  }
+
+  const r = data[0];
+  if (r.newly_awarded) {
+    resultBox.innerHTML = `<div class="success-msg" style="font-size:18px;">✅ ${r.chor_name} — sticker awarded! (${r.total_stickers}/${r.total_checkposts})</div>`;
+  } else {
+    resultBox.innerHTML = `<div class="muted" style="font-size:16px;">ℹ️ ${r.chor_name} already collected this zone's sticker. (${r.total_stickers}/${r.total_checkposts})</div>`;
+  }
+  if (r.chor_status === "winner") {
+    resultBox.innerHTML += `<div class="winner-banner" style="margin-top:10px;">🏆 ${r.chor_name} just completed all zones!</div>`;
+  }
+
+  recent.unshift({ name: r.chor_name, time: Date.now(), awarded: r.newly_awarded });
+  renderRecent();
+  busy = false;
 }
 
 async function startScan() {
@@ -64,10 +107,10 @@ async function startScan() {
     await html5QrCode.start(
       { facingMode: "environment" },
       { fps: 10, qrbox: 220 },
-      onScanSuccess
+      (decodedText) => processCode(decodedText)
     );
   } catch (e) {
-    document.getElementById("scanMsg").textContent = "Camera error: " + e;
+    document.getElementById("resultBox").textContent = "Camera error: " + e;
   }
 }
 
@@ -82,45 +125,12 @@ async function stopScan() {
   document.getElementById("stopScanBtn").style.display = "none";
 }
 
-async function finalizeGroup() {
-  if (!session.assigned_checkpost_id) {
-    alert("You have no checkpost assigned. Ask the admin.");
-    return;
-  }
-  const chorIds = pending.map((p) => p.id);
-  document.getElementById("finalizeBtn").disabled = true;
-  document.getElementById("finalizeBtn").textContent = "Processing...";
-
-  const { data, error } = await sb.rpc("finalize_checkpost_group", {
-    p_checkpost_id: session.assigned_checkpost_id,
-    p_chor_ids: chorIds,
-  });
-
-  document.getElementById("finalizeBtn").textContent = "Finalize Group";
-
-  const resultBox = document.getElementById("resultBox");
-  if (error) {
-    resultBox.innerHTML = `<span class="error-msg">${error.message}</span>`;
-  } else {
-    resultBox.innerHTML = data
-      .map((r) => `<div class="list-item"><span>${r.name}</span><span class="badge ${r.status}">${r.status}</span></div>`)
-      .join("");
-  }
-
-  pending = [];
-  renderPending();
-}
-
 document.getElementById("startScanBtn").addEventListener("click", startScan);
 document.getElementById("stopScanBtn").addEventListener("click", stopScan);
-document.getElementById("finalizeBtn").addEventListener("click", finalizeGroup);
-document.getElementById("clearBtn").addEventListener("click", () => { pending = []; renderPending(); });
-
-document.getElementById("manualAddBtn").addEventListener("click", async () => {
+document.getElementById("manualAddBtn").addEventListener("click", () => {
   const input = document.getElementById("manualCode");
-  const code = input.value.trim();
-  if (!code) return;
-  await onScanSuccess(code);
+  if (!input.value.trim()) return;
+  processCode(input.value);
   input.value = "";
 });
 document.getElementById("manualCode").addEventListener("keydown", (e) => {

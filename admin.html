@@ -2,9 +2,21 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <title>Admin — Chor Police</title>
 <link rel="stylesheet" href="css/style.css" />
+<style>
+  @media print {
+    body * { visibility: hidden; }
+    #printArea, #printArea * { visibility: visible; }
+    #printArea { position: absolute; top: 0; left: 0; width: 100%; }
+  }
+  .print-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .print-card { border: 1px dashed #999; border-radius: 10px; padding: 10px; text-align: center; color: #000; background: #fff; }
+  .print-card img { display: block; margin: 0 auto; }
+  .print-card .pname { font-weight: 700; margin-top: 6px; }
+  .print-card .pcode { font-size: 18px; font-weight: 800; letter-spacing: 2px; }
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -16,17 +28,18 @@
   <div class="tabs">
     <button class="tab-btn active" data-tab="overview">Live Status</button>
     <button class="tab-btn" data-tab="players">Players</button>
-    <button class="tab-btn" data-tab="checkposts">Checkposts</button>
-    <button class="tab-btn" data-tab="logs">Catch Log</button>
+    <button class="tab-btn" data-tab="checkposts">Safe Zones</button>
+    <button class="tab-btn" data-tab="print">Print Cards</button>
+    <button class="tab-btn" data-tab="logs">Logs</button>
     <button class="tab-btn" data-tab="settings">Settings</button>
   </div>
 
   <!-- OVERVIEW -->
   <div class="tab-panel active" id="tab-overview">
     <div class="card">
-      <h3>Chors</h3>
+      <h3>Chors <span class="muted" id="overviewCounts"></span></h3>
       <table>
-        <thead><tr><th>Name</th><th>Code</th><th>Status</th><th>Lives</th><th>Stamps</th></tr></thead>
+        <thead><tr><th>Name</th><th>Code</th><th>Status</th><th>Lives</th><th>Stickers</th></tr></thead>
         <tbody id="chorTable"></tbody>
       </table>
     </div>
@@ -35,21 +48,27 @@
   <!-- PLAYERS -->
   <div class="tab-panel" id="tab-players">
     <div class="card">
-      <h3>Add player</h3>
-      <input id="newName" placeholder="Full name" />
-      <select id="newRole">
+      <h3>Bulk add players</h3>
+      <p class="muted">One name per line. A unique login code is generated for each.</p>
+      <textarea id="bulkNames" rows="6" style="width:100%; padding:12px; border-radius:10px; border:1px solid var(--border); background:var(--card2); color:var(--text); margin-bottom:10px;" placeholder="Aarav Shah&#10;Priya Mehta&#10;Rohan Iyer"></textarea>
+      <select id="bulkRole">
         <option value="chor">Chor</option>
         <option value="police">Police</option>
-        <option value="volunteer">Checkpost Volunteer</option>
+        <option value="volunteer">Safe Zone Volunteer</option>
       </select>
-      <select id="newCheckpost" style="display:none;"></select>
-      <button id="addPlayerBtn">Generate Code & Add</button>
-      <div id="newPlayerResult"></div>
+      <select id="bulkCheckpost" style="display:none;"></select>
+      <button id="bulkAddBtn">Generate Codes & Add All</button>
+      <div id="bulkResult"></div>
     </div>
     <div class="card">
       <h3>All players</h3>
+      <div class="tabs">
+        <button class="pfilter-btn active" data-role="chor">Chors</button>
+        <button class="pfilter-btn" data-role="police">Police</button>
+        <button class="pfilter-btn" data-role="volunteer">Volunteers</button>
+      </div>
       <table>
-        <thead><tr><th>Name</th><th>Role</th><th>Code</th><th>Checkpost</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Code</th><th>Zone</th><th></th></tr></thead>
         <tbody id="playersTable"></tbody>
       </table>
     </div>
@@ -58,18 +77,34 @@
   <!-- CHECKPOSTS -->
   <div class="tab-panel" id="tab-checkposts">
     <div class="card">
-      <h3>Add checkpost</h3>
-      <input id="newCheckpostName" placeholder="Checkpost name (e.g. Clock Tower)" />
+      <h3>Add Safe Zone</h3>
+      <input id="newCheckpostName" placeholder="Safe Zone name (e.g. Nike Store)" />
       <input id="newCheckpostOrder" placeholder="Order number (e.g. 1)" type="number" />
-      <button id="addCheckpostBtn">Add Checkpost</button>
+      <button id="addCheckpostBtn">Add Safe Zone</button>
     </div>
     <div class="card">
-      <h3>All checkposts</h3>
+      <h3>All Safe Zones</h3>
       <table>
         <thead><tr><th>#</th><th>Name</th><th></th></tr></thead>
         <tbody id="checkpostsTable"></tbody>
       </table>
     </div>
+  </div>
+
+  <!-- PRINT CARDS -->
+  <div class="tab-panel" id="tab-print">
+    <div class="card">
+      <h3>Print login cards</h3>
+      <p class="muted">Pick a role, then print. Each card shows name, code & QR.</p>
+      <select id="printRole">
+        <option value="chor">Chors</option>
+        <option value="police">Police</option>
+        <option value="volunteer">Volunteers</option>
+      </select>
+      <button id="loadPrintBtn">Load Cards</button>
+      <button id="doPrintBtn" class="success">🖨 Print</button>
+    </div>
+    <div id="printArea" class="print-grid"></div>
   </div>
 
   <!-- LOGS -->
@@ -82,9 +117,9 @@
       </table>
     </div>
     <div class="card">
-      <h3>Checkpost visits</h3>
+      <h3>Sticker collections</h3>
       <table>
-        <thead><tr><th>Time</th><th>Chor</th><th>Checkpost</th><th>Group</th><th>Status</th></tr></thead>
+        <thead><tr><th>Time</th><th>Chor</th><th>Safe Zone</th></tr></thead>
         <tbody id="visitsTable"></tbody>
       </table>
     </div>
@@ -94,8 +129,6 @@
   <div class="tab-panel" id="tab-settings">
     <div class="card">
       <h3>Game settings</h3>
-      <label class="muted">Group size required for a stamp</label>
-      <input id="setGroupSize" type="number" />
       <label class="muted">Penalty duration (seconds)</label>
       <input id="setPenaltySeconds" type="number" />
       <label class="muted">Lifelines per chor</label>
@@ -106,7 +139,7 @@
     <div class="card">
       <h3>Danger zone</h3>
       <button id="resetGameBtn" class="danger">Reset Game (wipe progress)</button>
-      <p class="muted">Keeps all players/checkposts, clears stamps, catches, lifelines & penalties.</p>
+      <p class="muted">Keeps all players/zones, clears stickers, catches, lifelines & jail status.</p>
     </div>
   </div>
 </div>

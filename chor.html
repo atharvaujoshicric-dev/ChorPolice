@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>Chor Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Chor Passport</title>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -19,28 +19,28 @@
     <h3 style="margin-bottom:6px;">Your code</h3>
     <div id="codeText" style="font-size:22px; font-weight:800; letter-spacing:2px; margin-bottom:10px;"></div>
     <div class="qr-box"><img id="qrImg" width="220" height="220" alt="Your QR code" /></div>
-    <p class="muted">Show this to a volunteer at a checkpost, or a police officer if caught.</p>
+    <p class="muted">Show this to a Safe Zone volunteer to collect a sticker, or to police if caught.</p>
   </div>
 
   <div class="card">
-    <h3>Lifelines</h3>
+    <h3>Lifelines (tokens)</h3>
     <div id="hearts" class="hearts"></div>
   </div>
 
   <div class="card">
-    <h3>Progress <span id="progressCount" class="badge"></span></h3>
+    <h3>Passport <span id="progressCount" class="badge"></span></h3>
     <div id="checkpostList"></div>
   </div>
 
   <div class="card">
-    <h3>Game rules — quick reminder</h3>
+    <h3>Quick rules</h3>
     <ul class="muted">
-      <li>Visit a checkpost <b>alone</b> → safe ticket (no penalty, but doesn't count as progress).</li>
-      <li>Visit a checkpost with <b>exactly 10</b> chors together → you get the stamp (counts toward winning).</li>
-      <li>Any other group size at a checkpost → police may catch you.</li>
-      <li>While travelling between checkposts, groups don't protect you — police can catch you alone.</li>
-      <li>3 lifelines total. Lose all 3 and you're eliminated.</li>
-      <li>Stamp every checkpost to win!</li>
+      <li>Visit any Safe Zone to collect that zone's unique sticker (once each).</li>
+      <li>Each Safe Zone holds max 10 chors at a time — if it's full, wait outside.</li>
+      <li>Outside Safe Zones, police can catch you any time.</li>
+      <li>Caught → lose a life, 2 minutes in jail, then back in from any Safe Zone.</li>
+      <li>3 lifelines total — lose all 3 and you're eliminated.</li>
+      <li>Collect all 10 stickers to win!</li>
     </ul>
   </div>
 </div>
