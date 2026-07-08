@@ -1,10 +1,26 @@
 -- ============================================================
--- ALPHA — CHOR vs POLICE — SUPABASE SCHEMA v3
+-- ALPHA — CHOR vs POLICE — SUPABASE SCHEMA v4
 -- 10 Safe Zones each giving one unique sticker, passport + token
 -- (=lifelines) system, 2-min jail, restart from any Safe Zone,
--- 3 lifelines then eliminated, ADMIN-only rule overrides,
--- real enforced "Safe Ticket" protection, per-zone hints routed
--- to different chors, optional per-zone vouchers/coupons.
+-- 3 lifelines then eliminated, per-zone hints routed to different
+-- chors, optional per-zone vouchers/coupons, real enforced
+-- "Safe Ticket" protection.
+--
+-- v4 closes several loopholes found on review:
+--  - collect_sticker now requires proof the caller is the actual
+--    volunteer assigned to that zone (previously any chor could
+--    call it directly from devtools and self-award every sticker).
+--  - catch_chor now requires proof the caller is a real police
+--    account (previously any chor could call it directly and
+--    "catch"/eliminate a rival by claiming to be police).
+--  - Every admin-only override now requires a hidden admin
+--    PASSCODE (stored in a table nobody can SELECT via the API)
+--    instead of just the admin's player id, which was trivially
+--    discoverable by anyone since the players table is open.
+--  - Safe Ticket protection is now only granted on a genuinely
+--    NEW sticker, not on repeat re-scans of an already-collected
+--    zone (previously a chor could camp at a zone getting rescanned
+--    forever and stay permanently uncatchable for free).
 --
 -- Run this whole file in Supabase SQL Editor (Project > SQL Editor > New query)
 -- Safe to re-run: drops & recreates functions/policies, adds any
@@ -19,8 +35,15 @@ create extension if not exists pgcrypto;
 drop function if exists finalize_checkpost_group(uuid, uuid[]);
 drop function if exists undo_last_catch(uuid);
 drop function if exists reset_game();
+drop function if exists reset_game(uuid);
 drop function if exists collect_sticker(uuid, uuid);
 drop function if exists catch_chor(uuid, uuid);
+drop function if exists admin_undo_catch(uuid, uuid);
+drop function if exists admin_clear_jail(uuid, uuid);
+drop function if exists admin_restore_chor(uuid, uuid);
+drop function if exists admin_eliminate_chor(uuid, uuid);
+drop function if exists admin_full_wipe(uuid);
+drop function if exists assert_is_admin(uuid);
 drop table if exists checkpost_visits cascade;
 
 alter table if exists game_settings drop column if exists group_size_required;
@@ -37,18 +60,38 @@ alter table if exists players add column if not exists protected_checkpost_id uu
 alter table if exists players add column if not exists next_hint_checkpost_id uuid references checkposts(id) on delete set null;
 
 -- ------------------------------------------------------------
--- Small helper: raises if the given player id is not an admin.
--- Used by every rule-overriding action so that even a direct RPC
--- call (not just the UI button) is blocked for non-admins.
+-- ADMIN PASSCODE — deliberately in its own table with NO select
+-- policy at all, so RLS denies every client read of it via the
+-- API (even though the blanket GRANT below still applies, RLS
+-- with zero policies blocks all rows regardless of grants). Only
+-- SECURITY DEFINER functions owned by you can read it internally.
+-- This replaces authenticating admin actions by player id (which
+-- is trivially readable by anyone since players is open) with a
+-- real secret nobody else can fetch through the app.
 -- ------------------------------------------------------------
-create or replace function assert_is_admin(p_player_id uuid) returns void as $$
-declare
-  v_role text;
+create table if not exists admin_secret (
+  id int primary key default 1,
+  passcode text not null default 'change-this-now'
+);
+insert into admin_secret (id) values (1) on conflict (id) do nothing;
+alter table admin_secret enable row level security;
+-- intentionally no policies created here — default deny for anon/authenticated
+
+create or replace function assert_admin_passcode(p_passcode text) returns void as $$
 begin
-  select pl.role into v_role from players pl where pl.id = p_player_id;
-  if v_role is distinct from 'admin' then
-    raise exception 'Not authorized: admin only';
+  if p_passcode is null or not exists (select 1 from admin_secret a where a.passcode = p_passcode) then
+    raise exception 'Not authorized: invalid admin passcode';
   end if;
+end;
+$$ language plpgsql security definer;
+
+create or replace function admin_set_passcode(p_old_passcode text, p_new_passcode text) returns void as $$
+begin
+  perform assert_admin_passcode(p_old_passcode);
+  if p_new_passcode is null or length(trim(p_new_passcode)) < 4 then
+    raise exception 'New passcode must be at least 4 characters';
+  end if;
+  update admin_secret set passcode = p_new_passcode where id = 1;
 end;
 $$ language plpgsql security definer;
 
@@ -66,10 +109,6 @@ insert into game_settings (id) values (1) on conflict (id) do nothing;
 
 -- ------------------------------------------------------------
 -- CHECKPOSTS (Safe Zones)
--- hint_text: clue shown to a chor routed here next (admin-set)
--- voucher_text: optional coupon/reward shown once collected
--- next_hint_cursor: rotation pointer so different chors leaving
---   this zone get routed to different next zones
 -- ------------------------------------------------------------
 create table if not exists checkposts (
   id uuid primary key default gen_random_uuid(),
@@ -83,9 +122,6 @@ create table if not exists checkposts (
 
 -- ------------------------------------------------------------
 -- PLAYERS (chor / police / volunteer / admin) — code-based login
--- protected_until / protected_checkpost_id: the real, enforced
---   "Safe Ticket" — while set in the future, catch_chor rejects.
--- next_hint_checkpost_id: which zone's hint this chor currently sees.
 -- ------------------------------------------------------------
 create table if not exists players (
   id uuid primary key default gen_random_uuid(),
@@ -128,14 +164,15 @@ create table if not exists catches (
 
 -- ------------------------------------------------------------
 -- SEED: admin account (CHANGE THE CODE AFTER FIRST LOGIN)
+-- Admin passcode default is 'change-this-now' — set your own from
+-- the Settings tab immediately after logging in.
 -- ------------------------------------------------------------
 insert into players (code, name, role, lifelines)
 values ('ADMIN1', 'Game Admin', 'admin', 0)
 on conflict (code) do nothing;
 
 -- ------------------------------------------------------------
--- WINNER TRIGGERS: mark chor as winner once all zones collected,
--- and revert winner status if an admin removes a sticker later.
+-- WINNER TRIGGERS
 -- ------------------------------------------------------------
 create or replace function check_winner() returns trigger as $$
 declare
@@ -179,15 +216,10 @@ create trigger trg_check_unwinner
   for each row execute function check_unwinner();
 
 -- ------------------------------------------------------------
--- RPC: collect a sticker at a safe zone (single instant scan)
--- - Idempotent: scanning the same chor+zone twice is a safe no-op.
--- - Grants/refreshes the chor's Safe Ticket protection window.
--- - Assigns their next hint by rotating through their remaining,
---   not-yet-collected zones, so different chors leaving the same
---   zone get pointed at different next zones.
--- - Surfaces this zone's voucher (if any) when newly collected.
+-- INTERNAL: core sticker-collection logic, no caller verification.
+-- Only called by the two wrapper functions below, which DO verify.
 -- ------------------------------------------------------------
-create or replace function collect_sticker(
+create or replace function _do_collect(
   p_chor_id uuid,
   p_checkpost_id uuid
 ) returns table (
@@ -233,15 +265,23 @@ begin
   get diagnostics v_inserted = row_count;
   v_inserted := (v_inserted::int = 1);
 
-  -- grant/refresh Safe Ticket protection — this is what actually
-  -- blocks a catch attempt while the chor is at this zone
-  select gs.safe_zone_grace_seconds into v_grace_seconds from game_settings gs where gs.id = 1;
-  v_protected_until := now() + (v_grace_seconds || ' seconds')::interval;
+  -- Safe Ticket protection is only granted on a genuinely NEW
+  -- sticker. Re-scanning a zone you've already collected does NOT
+  -- refresh protection — otherwise a chor could camp at a zone and
+  -- get rescanned every minute to stay permanently uncatchable.
+  select pl2.protected_until into v_protected_until from players pl2 where pl2.id = p_chor_id;
 
-  update players pl
-    set protected_until = v_protected_until,
-        protected_checkpost_id = p_checkpost_id
-    where pl.id = p_chor_id;
+  if v_inserted then
+    select gs.safe_zone_grace_seconds into v_grace_seconds from game_settings gs where gs.id = 1;
+    v_protected_until := now() + (v_grace_seconds || ' seconds')::interval;
+
+    update players pl
+      set protected_until = v_protected_until,
+          protected_checkpost_id = p_checkpost_id
+      where pl.id = p_chor_id;
+
+    select cp.voucher_text into v_voucher from checkposts cp where cp.id = p_checkpost_id;
+  end if;
 
   -- rotate this zone's cursor so the next chor who leaves gets a
   -- different next-zone hint than the one before them
@@ -266,20 +306,16 @@ begin
 
   update players pl set next_hint_checkpost_id = v_next_checkpost_id where pl.id = p_chor_id;
 
-  if v_inserted then
-    select cp.voucher_text into v_voucher from checkposts cp where cp.id = p_checkpost_id;
-  end if;
-
   return query
   select
     v_inserted,
     v_name,
     (select count(*)::int from stickers s where s.chor_id = p_chor_id),
     (select count(*)::int from checkposts),
-    (select pl2.status from players pl2 where pl2.id = p_chor_id),
+    (select pl3.status from players pl3 where pl3.id = p_chor_id),
     v_protected_until,
-    (select count(*)::int from players pl3
-       where pl3.protected_checkpost_id = p_checkpost_id and pl3.protected_until > now()),
+    (select count(*)::int from players pl4
+       where pl4.protected_checkpost_id = p_checkpost_id and pl4.protected_until > now()),
     v_voucher,
     (select cp2.hint_text from checkposts cp2 where cp2.id = v_next_checkpost_id),
     (select cp3.name from checkposts cp3 where cp3.id = v_next_checkpost_id);
@@ -287,15 +323,38 @@ end;
 $$ language plpgsql security definer;
 
 -- ------------------------------------------------------------
--- RPC: police catches a chor (via scanning chor's personal QR)
--- Blocks the catch entirely if the chor currently holds an
--- active Safe Ticket (protected_until in the future) — this is
--- the real, enforced version of "safe inside a Safe Zone".
+-- RPC: collect a sticker — requires proof the caller is the
+-- volunteer actually assigned to this Safe Zone. Without this,
+-- anyone could call the RPC directly from devtools and award
+-- themselves every sticker with no visit at all.
 -- ------------------------------------------------------------
-create or replace function catch_chor(
+create or replace function collect_sticker(
   p_chor_id uuid,
-  p_police_id uuid
-) returns table (id uuid, name text, lifelines int, status text, penalty_until timestamptz) as $$
+  p_checkpost_id uuid,
+  p_volunteer_id uuid
+) returns table (
+  newly_awarded boolean, chor_name text, total_stickers int, total_checkposts int,
+  chor_status text, protected_until timestamptz, zone_occupancy int,
+  voucher_text text, next_hint_text text, next_hint_checkpost_name text
+) as $$
+begin
+  if not exists (
+    select 1 from players pl
+    where pl.id = p_volunteer_id and pl.role = 'volunteer' and pl.assigned_checkpost_id = p_checkpost_id
+  ) then
+    raise exception 'Not authorized: you are not the volunteer assigned to this Safe Zone';
+  end if;
+
+  return query select * from _do_collect(p_chor_id, p_checkpost_id);
+end;
+$$ language plpgsql security definer;
+
+-- ------------------------------------------------------------
+-- INTERNAL: core catch logic, no caller verification. Only called
+-- by the two wrapper functions below, which DO verify.
+-- ------------------------------------------------------------
+create or replace function _do_catch(p_chor_id uuid, p_actor_id uuid)
+returns table (id uuid, name text, lifelines int, status text, penalty_until timestamptz) as $$
 declare
   v_lifelines int;
   v_status text;
@@ -346,7 +405,7 @@ begin
   end if;
 
   insert into catches (chor_id, police_id, lifelines_before, lifelines_after, resulted_in_elimination)
-  values (p_chor_id, p_police_id, v_lifelines, v_new_lifelines, v_eliminated);
+  values (p_chor_id, p_actor_id, v_lifelines, v_new_lifelines, v_eliminated);
 
   return query
     select pl.id, pl.name, pl.lifelines, pl.status, pl.penalty_until
@@ -355,17 +414,38 @@ end;
 $$ language plpgsql security definer;
 
 -- ------------------------------------------------------------
+-- RPC: police catches a chor — requires proof the caller is a
+-- real police account. Without this, any chor could call the RPC
+-- directly and eliminate a rival by just claiming to be police.
+-- ------------------------------------------------------------
+create or replace function catch_chor(
+  p_chor_id uuid,
+  p_police_id uuid
+) returns table (id uuid, name text, lifelines int, status text, penalty_until timestamptz) as $$
+declare
+  v_role text;
+begin
+  select pl.role into v_role from players pl where pl.id = p_police_id;
+  if v_role is distinct from 'police' then
+    raise exception 'Not authorized: only a police account can make a catch';
+  end if;
+
+  return query select * from _do_catch(p_chor_id, p_police_id);
+end;
+$$ language plpgsql security definer;
+
+-- ------------------------------------------------------------
 -- ADMIN-ONLY OVERRIDES
--- Every function below re-checks role='admin' server-side, so
--- even a direct RPC call from a non-admin session is rejected.
+-- Every function below requires the hidden admin passcode, not
+-- just a player id — see admin_secret table above for why.
 -- ------------------------------------------------------------
 
-create or replace function admin_undo_catch(p_admin_id uuid, p_catch_id uuid)
+create or replace function admin_undo_catch(p_admin_passcode text, p_catch_id uuid)
 returns table (chor_id uuid, chor_name text) as $$
 declare
   v_catch record;
 begin
-  perform assert_is_admin(p_admin_id);
+  perform assert_admin_passcode(p_admin_passcode);
 
   select c.* into v_catch from catches c where c.id = p_catch_id for update;
   if v_catch.id is null then
@@ -384,44 +464,80 @@ begin
 end;
 $$ language plpgsql security definer;
 
-create or replace function admin_clear_jail(p_admin_id uuid, p_chor_id uuid)
+create or replace function admin_clear_jail(p_admin_passcode text, p_chor_id uuid)
 returns void as $$
 begin
-  perform assert_is_admin(p_admin_id);
+  perform assert_admin_passcode(p_admin_passcode);
   update players pl set penalty_until = null where pl.id = p_chor_id;
 end;
 $$ language plpgsql security definer;
 
-create or replace function admin_restore_chor(p_admin_id uuid, p_chor_id uuid)
+-- Precise lifelines control: sets lifelines to an EXACT value
+-- (clamped between 0 and the configured max) instead of always
+-- fully resetting. Reviving from 0 sets status back to active;
+-- dropping to 0 sets status to eliminated.
+create or replace function admin_set_lifelines(p_admin_passcode text, p_chor_id uuid, p_lifelines int)
 returns void as $$
 declare
-  v_lifelines_default int;
+  v_max int;
+  v_lifelines int := p_lifelines;
 begin
-  perform assert_is_admin(p_admin_id);
-  select gs.lifelines_default into v_lifelines_default from game_settings gs where gs.id = 1;
+  perform assert_admin_passcode(p_admin_passcode);
+  select gs.lifelines_default into v_max from game_settings gs where gs.id = 1;
+
+  if v_lifelines < 0 then v_lifelines := 0; end if;
+  if v_lifelines > v_max then v_lifelines := v_max; end if;
+
   update players pl
-    set status = 'active', lifelines = v_lifelines_default, penalty_until = null
+    set lifelines = v_lifelines,
+        status = case when v_lifelines <= 0 then 'eliminated' else 'active' end,
+        penalty_until = case when v_lifelines <= 0 then null else pl.penalty_until end
     where pl.id = p_chor_id;
 end;
 $$ language plpgsql security definer;
 
-create or replace function admin_eliminate_chor(p_admin_id uuid, p_chor_id uuid)
+create or replace function admin_eliminate_chor(p_admin_passcode text, p_chor_id uuid)
 returns void as $$
 begin
-  perform assert_is_admin(p_admin_id);
+  perform assert_admin_passcode(p_admin_passcode);
   update players pl
     set status = 'eliminated', lifelines = 0, penalty_until = null
     where pl.id = p_chor_id;
 end;
 $$ language plpgsql security definer;
 
+-- Emergency manual actions for when a camera genuinely fails —
+-- admin-only, fully logged like any other catch/collection.
+create or replace function admin_manual_catch(p_admin_passcode text, p_chor_id uuid)
+returns table (id uuid, name text, lifelines int, status text, penalty_until timestamptz) as $$
+declare
+  v_admin_id uuid;
+begin
+  perform assert_admin_passcode(p_admin_passcode);
+  select pl.id into v_admin_id from players pl where pl.role = 'admin' limit 1;
+  return query select * from _do_catch(p_chor_id, v_admin_id);
+end;
+$$ language plpgsql security definer;
+
+create or replace function admin_manual_award_sticker(p_admin_passcode text, p_chor_id uuid, p_checkpost_id uuid)
+returns table (
+  newly_awarded boolean, chor_name text, total_stickers int, total_checkposts int,
+  chor_status text, protected_until timestamptz, zone_occupancy int,
+  voucher_text text, next_hint_text text, next_hint_checkpost_name text
+) as $$
+begin
+  perform assert_admin_passcode(p_admin_passcode);
+  return query select * from _do_collect(p_chor_id, p_checkpost_id);
+end;
+$$ language plpgsql security definer;
+
 -- Reset progress only: keeps every player & zone, wipes stickers/
 -- catches/lifelines/jail/protection/hints so you can re-run the event.
-create or replace function reset_game(p_admin_id uuid) returns void as $$
+create or replace function reset_game(p_admin_passcode text) returns void as $$
 declare
   v_lifelines_default int;
 begin
-  perform assert_is_admin(p_admin_id);
+  perform assert_admin_passcode(p_admin_passcode);
 
   select gs.lifelines_default into v_lifelines_default from game_settings gs where gs.id = 1;
 
@@ -440,15 +556,14 @@ end;
 $$ language plpgsql security definer;
 
 -- Full wipe: deletes every player except the admin seed, every
--- Safe Zone, and all logs — use this to start completely fresh
--- for a brand-new event. (The Supabase Table Editor's own "delete
--- all rows" button will refuse with "DELETE requires a WHERE
--- clause" — that's a PostgREST safety guard on the REST API, not
--- something wrong with your data. This function runs as plain SQL
--- inside the database instead, so it isn't affected by that guard.)
-create or replace function admin_full_wipe(p_admin_id uuid) returns void as $$
+-- Safe Zone, and all logs. (Supabase's own Table Editor "delete
+-- all rows" button refuses with "DELETE requires a WHERE clause"
+-- — that's a PostgREST safety guard on the REST API, not a bug.
+-- This function runs as plain SQL inside the database, so it
+-- isn't affected by that guard.)
+create or replace function admin_full_wipe(p_admin_passcode text) returns void as $$
 begin
-  perform assert_is_admin(p_admin_id);
+  perform assert_admin_passcode(p_admin_passcode);
   delete from catches where true;
   delete from stickers where true;
   delete from players where role <> 'admin';
@@ -458,11 +573,6 @@ $$ language plpgsql security definer;
 
 -- ------------------------------------------------------------
 -- VIEW: chor progress (used by admin/chor dashboards)
--- Dropped first: CREATE OR REPLACE VIEW can only append columns
--- at the end, not insert one in the middle (protected_until sits
--- before stickers here), so a plain replace fails with
--- "cannot change name of view column ... to ...". Dropping and
--- recreating avoids that entirely.
 -- ------------------------------------------------------------
 drop view if exists chor_progress;
 
@@ -485,7 +595,9 @@ group by p.id;
 -- ------------------------------------------------------------
 -- ROW LEVEL SECURITY
 -- Private live-event game run by trusted staff — anon key gets
--- full read/write. Tighten for a public deployment.
+-- full read/write on gameplay tables. admin_secret is the one
+-- deliberate exception (see above). Tighten further for a public
+-- deployment.
 -- ------------------------------------------------------------
 alter table game_settings enable row level security;
 alter table checkposts enable row level security;

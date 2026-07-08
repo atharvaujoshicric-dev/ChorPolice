@@ -5,7 +5,6 @@ let html5QrCode = null;
 let scanning = false;
 let pendingChor = null;
 
-// debounce — camera can fire the same code repeatedly per second
 const COOLDOWN_MS = 4000;
 let lastCode = null;
 let lastCodeAt = 0;
@@ -103,14 +102,4 @@ document.getElementById("confirmBtn").addEventListener("click", confirmCatch);
 document.getElementById("cancelBtn").addEventListener("click", () => {
   pendingChor = null;
   document.getElementById("confirmCard").style.display = "none";
-});
-
-document.getElementById("manualLookupBtn").addEventListener("click", () => {
-  const input = document.getElementById("manualCode");
-  if (!input.value.trim()) return;
-  lookupChor(input.value);
-  input.value = "";
-});
-document.getElementById("manualCode").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") document.getElementById("manualLookupBtn").click();
 });

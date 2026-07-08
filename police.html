@@ -20,13 +20,11 @@
 
   <div class="card">
     <h3>Catch a chor</h3>
-    <p class="muted">Scan the chor's personal QR code to catch them (outside a Safe Zone).</p>
+    <p class="muted">Scan the chor's personal QR code to catch them (outside a Safe Zone, and only if they don't hold an active Safe Ticket).</p>
     <button id="startScanBtn">📷 Start Scanning</button>
     <button id="stopScanBtn" class="secondary" style="display:none;">Stop Camera</button>
     <div id="reader" style="display:none;"></div>
-    <p class="muted" style="margin-top:12px;">Camera not working? Type the chor's code instead:</p>
-    <input id="manualCode" placeholder="e.g. ALPHA-ROH" autocapitalize="characters" autocomplete="off" />
-    <button id="manualLookupBtn" class="secondary">Look Up</button>
+    <p class="muted" style="margin-top:12px;">Camera not working? Ask the Admin for a manual override — catches always require an actual QR scan here, on purpose, so a catch can't happen without physically being at the chor.</p>
   </div>
 
   <div id="confirmCard" class="card" style="display:none;">
@@ -39,7 +37,6 @@
   <div class="card">
     <h3>Result</h3>
     <div id="resultBox" class="muted">No catch yet.</div>
-    <p class="muted">Made a mistake? Ask the admin to undo it from the Logs tab.</p>
   </div>
 </div>
 

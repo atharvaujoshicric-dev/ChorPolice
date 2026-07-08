@@ -30,10 +30,13 @@
     <a href="#" class="logout" onclick="logout()">Logout</a>
   </div>
 
+  <div id="passcodeWarning"></div>
+
   <div class="tabs">
     <button class="tab-btn active" data-tab="overview">Live Status</button>
     <button class="tab-btn" data-tab="players">Players</button>
     <button class="tab-btn" data-tab="checkposts">Safe Zones</button>
+    <button class="tab-btn" data-tab="override">Manual Override</button>
     <button class="tab-btn" data-tab="print">Print Cards</button>
     <button class="tab-btn" data-tab="logs">Logs</button>
     <button class="tab-btn" data-tab="settings">Settings</button>
@@ -43,19 +46,16 @@
   <div class="tab-panel active" id="tab-overview">
     <div class="card">
       <h3>Chors <span class="muted" id="overviewCounts"></span></h3>
-      <table>
-        <thead><tr><th>Name</th><th>Code</th><th>Status</th><th>Lives</th><th>Stickers</th><th>Actions</th></tr></thead>
-        <tbody id="chorTable"></tbody>
-      </table>
     </div>
+    <div id="chorCards"></div>
   </div>
 
   <!-- PLAYERS -->
   <div class="tab-panel" id="tab-players">
     <div class="card">
       <h3>Bulk add players</h3>
-      <p class="muted">One name per line. A unique login code is generated for each.</p>
-      <textarea id="bulkNames" rows="6" style="width:100%; padding:12px; border-radius:10px; border:1px solid var(--border); background:var(--card2); color:var(--text); margin-bottom:10px;" placeholder="Aarav Shah&#10;Priya Mehta&#10;Rohan Iyer"></textarea>
+      <p class="muted">One name per line. Codes are auto-generated as ALPHA-XXX (first 3 letters of first name).</p>
+      <textarea id="bulkNames" rows="6" placeholder="Aarav Shah&#10;Priya Mehta&#10;Rohan Iyer"></textarea>
       <select id="bulkRole">
         <option value="chor">Chor</option>
         <option value="police">Police</option>
@@ -72,10 +72,12 @@
         <button class="pfilter-btn" data-role="police">Police</button>
         <button class="pfilter-btn" data-role="volunteer">Volunteers</button>
       </div>
+      <div id="playersError"></div>
       <table>
         <thead><tr><th>Name</th><th>Code</th><th>Zone</th><th></th></tr></thead>
         <tbody id="playersTable"></tbody>
       </table>
+      <div id="playersEmpty" class="muted" style="display:none;">No players in this role yet — add some above.</div>
     </div>
   </div>
 
@@ -94,6 +96,25 @@
     <div class="card">
       <h3>All Safe Zones</h3>
       <div id="checkpostsList"></div>
+    </div>
+  </div>
+
+  <!-- MANUAL OVERRIDE -->
+  <div class="tab-panel" id="tab-override">
+    <div class="card">
+      <h3>⚠️ Manual Catch</h3>
+      <p class="muted">Only for when a police officer's camera genuinely fails. This bypasses the QR scan — use sparingly, it's logged like any other catch.</p>
+      <select id="overrideCatchChor"></select>
+      <button id="overrideCatchBtn" class="danger">Manually Catch This Chor</button>
+      <div id="overrideCatchMsg"></div>
+    </div>
+    <div class="card">
+      <h3>⚠️ Manual Sticker Award</h3>
+      <p class="muted">Only for when a Safe Zone volunteer's camera genuinely fails.</p>
+      <select id="overrideStickerChor"></select>
+      <select id="overrideStickerZone"></select>
+      <button id="overrideStickerBtn">Manually Award Sticker</button>
+      <div id="overrideStickerMsg"></div>
     </div>
   </div>
 
@@ -134,6 +155,18 @@
   <!-- SETTINGS -->
   <div class="tab-panel" id="tab-settings">
     <div class="card">
+      <h3>🔐 Admin Passcode</h3>
+      <p class="muted">Required for every destructive action (undo, eliminate, reset, wipe, manual overrides) — this is checked on the server, not just hidden in this menu. Default from setup is <code>change-this-now</code>; set your own the first time you use this panel.</p>
+      <label class="muted">Passcode used by this browser</label>
+      <input id="adminPasscodeInput" type="password" placeholder="Enter admin passcode" />
+      <button id="savePasscodeBtn" class="secondary">Save on This Device</button>
+      <hr style="border-color:var(--border); margin:14px 0;" />
+      <label class="muted">Change passcode (needs the current one above, saved first)</label>
+      <input id="newPasscodeInput" type="password" placeholder="New passcode (min 4 characters)" />
+      <button id="changePasscodeBtn">Change Passcode</button>
+      <div id="passcodeMsg"></div>
+    </div>
+    <div class="card">
       <h3>Game settings</h3>
       <label class="muted">Penalty duration (seconds)</label>
       <input id="setPenaltySeconds" type="number" />
@@ -150,7 +183,6 @@
       <p class="muted">Keeps all players/zones, clears stickers, catches, lifelines, jail & hints.</p>
       <button id="fullWipeBtn" class="danger" style="margin-top:14px;">Full Wipe — Delete Everyone & Zones</button>
       <p class="muted">Deletes every chor/police/volunteer and every Safe Zone. Only the admin login survives. Use this to start a brand-new event from scratch.</p>
-      <p class="muted">Note: Supabase's own Table Editor "delete all rows" button will refuse with "DELETE requires a WHERE clause" — that's a safety guard on their REST API, not a bug. The buttons above run as proper database functions instead, so they work.</p>
     </div>
   </div>
 </div>

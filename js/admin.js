@@ -1,5 +1,24 @@
 const session = requireRole("admin");
 let currentPlayerFilter = "chor";
+let chorDataById = {}; // cache of latest chor_progress rows, keyed by chor_id
+
+// ---------- passcode helpers ----------
+function getPasscode() {
+  return localStorage.getItem("cp_admin_passcode") || "";
+}
+function setPasscode(v) {
+  localStorage.setItem("cp_admin_passcode", v);
+}
+
+function checkPasscodeWarning() {
+  const el = document.getElementById("passcodeWarning");
+  if (!getPasscode()) {
+    el.innerHTML = `<div class="penalty-banner" style="font-size:15px;">⚠️ No admin passcode saved on this device yet. Go to Settings → set it (default is <b>change-this-now</b>, then change it) or every override action below will fail.</div>`;
+  } else {
+    el.innerHTML = "";
+  }
+}
+checkPasscodeWarning();
 
 // ---------- tabs ----------
 document.querySelectorAll(".tab-btn").forEach((btn) => {
@@ -8,6 +27,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "override") loadOverrideOptions();
   });
 });
 
@@ -20,52 +40,88 @@ document.querySelectorAll(".pfilter-btn").forEach((btn) => {
   });
 });
 
-// ---------- overview ----------
+// ---------- overview (card-based live status) ----------
 async function loadOverview() {
-  const { data } = await sb.from("chor_progress").select("*").order("name");
+  const { data, error } = await sb.from("chor_progress").select("*").order("name");
+
+  if (error) {
+    document.getElementById("chorCards").innerHTML = `<div class="card"><span class="error-msg">${error.message}</span></div>`;
+    return;
+  }
+
   const list = data || [];
+  chorDataById = {};
+  list.forEach((c) => (chorDataById[c.chor_id] = c));
+
   const active = list.filter((c) => c.status === "active").length;
   const eliminated = list.filter((c) => c.status === "eliminated").length;
   const winners = list.filter((c) => c.status === "winner").length;
   document.getElementById("overviewCounts").textContent =
     `(${list.length} total — ${active} active, ${eliminated} eliminated, ${winners} won)`;
 
-  document.getElementById("chorTable").innerHTML = list
-    .map(
-      (c) => `<tr>
-        <td>${c.name}</td>
-        <td>${c.code}</td>
-        <td><span class="badge ${c.status}">${c.status}</span>${
-          c.protected_until && new Date(c.protected_until).getTime() > Date.now()
-            ? ' <span class="badge safe">🛡️ safe</span>'
-            : ""
-        }</td>
-        <td>${"❤️".repeat(c.lifelines)}${"🖤".repeat(3 - c.lifelines)}</td>
-        <td>${c.stickers} / ${c.total_checkposts}</td>
-        <td>
-          <button class="secondary" style="width:auto;padding:4px 8px;margin:2px;" onclick="adminClearJail('${c.chor_id}')">Release</button>
-          <button class="secondary" style="width:auto;padding:4px 8px;margin:2px;" onclick="adminRestore('${c.chor_id}')">Restore</button>
-          <button class="danger" style="width:auto;padding:4px 8px;margin:2px;" onclick="adminEliminate('${c.chor_id}')">Eliminate</button>
-        </td>
-      </tr>`
-    )
-    .join("");
+  document.getElementById("chorCards").innerHTML = list
+    .map((c) => {
+      const isSafe = c.protected_until && new Date(c.protected_until).getTime() > Date.now();
+      const isJailed = c.penalty_until && new Date(c.penalty_until).getTime() > Date.now();
+      return `<div class="chor-card">
+        <div class="chor-card-head">
+          <div>
+            <div class="chor-name">${c.name}</div>
+            <div class="chor-code muted">${c.code} · ${c.stickers}/${c.total_checkposts} stickers</div>
+          </div>
+          <div class="chor-badges">
+            <span class="badge ${c.status}">${c.status}</span>
+            ${isSafe ? '<span class="badge safe">🛡️ safe</span>' : ""}
+            ${isJailed ? '<span class="badge vulnerable">🚔 jailed</span>' : ""}
+          </div>
+        </div>
+        <div class="lifelines-control">
+          <button class="secondary" onclick="adjustLifelines('${c.chor_id}', -1)">−</button>
+          <span class="hearts">${"❤️".repeat(c.lifelines)}${"🖤".repeat(3 - c.lifelines)}</span>
+          <button class="secondary" onclick="adjustLifelines('${c.chor_id}', 1)">+</button>
+        </div>
+        <div class="chor-card-actions">
+          <button class="secondary" onclick="adminClearJail('${c.chor_id}')">Release Jail</button>
+          <button class="secondary" onclick="adminFullRestore('${c.chor_id}')">Full Restore</button>
+          <button class="danger" onclick="adminEliminate('${c.chor_id}')">Eliminate</button>
+        </div>
+      </div>`;
+    })
+    .join("") || `<div class="card muted">No chors added yet.</div>`;
+}
+
+async function adjustLifelines(chorId, delta) {
+  const current = chorDataById[chorId]?.lifelines ?? 0;
+  const next = current + delta;
+  const { error } = await sb.rpc("admin_set_lifelines", {
+    p_admin_passcode: getPasscode(),
+    p_chor_id: chorId,
+    p_lifelines: next,
+  });
+  if (error) alert(error.message);
+  loadOverview();
+}
+
+async function adminFullRestore(chorId) {
+  const { error } = await sb.rpc("admin_set_lifelines", {
+    p_admin_passcode: getPasscode(),
+    p_chor_id: chorId,
+    p_lifelines: 999, // clamped server-side to the configured max
+  });
+  if (error) { alert(error.message); return; }
+  await sb.rpc("admin_clear_jail", { p_admin_passcode: getPasscode(), p_chor_id: chorId });
+  loadOverview();
 }
 
 async function adminClearJail(chorId) {
-  const { error } = await sb.rpc("admin_clear_jail", { p_admin_id: session.id, p_chor_id: chorId });
+  const { error } = await sb.rpc("admin_clear_jail", { p_admin_passcode: getPasscode(), p_chor_id: chorId });
   if (error) alert(error.message);
   loadOverview();
 }
-async function adminRestore(chorId) {
-  if (!confirm("Restore this chor to active with full lifelines?")) return;
-  const { error } = await sb.rpc("admin_restore_chor", { p_admin_id: session.id, p_chor_id: chorId });
-  if (error) alert(error.message);
-  loadOverview();
-}
+
 async function adminEliminate(chorId) {
-  if (!confirm("Force-eliminate this chor?")) return;
-  const { error } = await sb.rpc("admin_eliminate_chor", { p_admin_id: session.id, p_chor_id: chorId });
+  if (!confirm("Eliminate this chor?")) return;
+  const { error } = await sb.rpc("admin_eliminate_chor", { p_admin_passcode: getPasscode(), p_chor_id: chorId });
   if (error) alert(error.message);
   loadOverview();
 }
@@ -131,18 +187,42 @@ document.getElementById("bulkAddBtn").addEventListener("click", async () => {
 });
 
 async function loadPlayers() {
-  const { data } = await sb
+  const errEl = document.getElementById("playersError");
+  const emptyEl = document.getElementById("playersEmpty");
+  errEl.innerHTML = "";
+
+  const { data: players, error } = await sb
     .from("players")
-    .select("*, checkposts(name)")
+    .select("*")
     .eq("role", currentPlayerFilter)
     .order("name");
 
-  document.getElementById("playersTable").innerHTML = (data || [])
+  if (error) {
+    errEl.innerHTML = `<span class="error-msg">Could not load players: ${error.message}</span>`;
+    document.getElementById("playersTable").innerHTML = "";
+    emptyEl.style.display = "none";
+    return;
+  }
+
+  const list = players || [];
+
+  if (list.length === 0) {
+    document.getElementById("playersTable").innerHTML = "";
+    emptyEl.style.display = "block";
+    return;
+  }
+  emptyEl.style.display = "none";
+
+  const { data: checkposts } = await sb.from("checkposts").select("id, name");
+  const zoneNameById = {};
+  (checkposts || []).forEach((c) => (zoneNameById[c.id] = c.name));
+
+  document.getElementById("playersTable").innerHTML = list
     .map(
       (p) => `<tr>
         <td>${p.name}</td>
         <td>${p.code}</td>
-        <td>${p.checkposts ? p.checkposts.name : "-"}</td>
+        <td>${p.assigned_checkpost_id ? (zoneNameById[p.assigned_checkpost_id] || "—") : "-"}</td>
         <td><button class="secondary" style="width:auto;padding:4px 8px;" onclick="deletePlayer('${p.id}')">Delete</button></td>
       </tr>`
     )
@@ -220,6 +300,45 @@ async function deleteCheckpost(id) {
   loadCheckpostOptions(document.getElementById("bulkCheckpost"));
 }
 
+// ---------- manual override ----------
+async function loadOverrideOptions() {
+  const { data: chors } = await sb.from("players").select("id, name, code").eq("role", "chor").order("name");
+  const chorOptions = (chors || []).map((c) => `<option value="${c.id}">${c.name} (${c.code})</option>`).join("");
+  document.getElementById("overrideCatchChor").innerHTML = chorOptions;
+  document.getElementById("overrideStickerChor").innerHTML = chorOptions;
+
+  const { data: zones } = await sb.from("checkposts").select("id, name").order("order_no");
+  document.getElementById("overrideStickerZone").innerHTML = (zones || [])
+    .map((z) => `<option value="${z.id}">${z.name}</option>`)
+    .join("");
+}
+
+document.getElementById("overrideCatchBtn").addEventListener("click", async () => {
+  const chorId = document.getElementById("overrideCatchChor").value;
+  if (!chorId) return;
+  if (!confirm("Manually catch this chor? This is logged like any other catch.")) return;
+  const { data, error } = await sb.rpc("admin_manual_catch", { p_admin_passcode: getPasscode(), p_chor_id: chorId });
+  const msg = document.getElementById("overrideCatchMsg");
+  msg.innerHTML = error ? `<span class="error-msg">${error.message}</span>` : `<span class="success-msg">${data[0].name} caught manually.</span>`;
+  loadOverview();
+});
+
+document.getElementById("overrideStickerBtn").addEventListener("click", async () => {
+  const chorId = document.getElementById("overrideStickerChor").value;
+  const zoneId = document.getElementById("overrideStickerZone").value;
+  if (!chorId || !zoneId) return;
+  const { data, error } = await sb.rpc("admin_manual_award_sticker", {
+    p_admin_passcode: getPasscode(),
+    p_chor_id: chorId,
+    p_checkpost_id: zoneId,
+  });
+  const msg = document.getElementById("overrideStickerMsg");
+  msg.innerHTML = error
+    ? `<span class="error-msg">${error.message}</span>`
+    : `<span class="success-msg">${data[0].newly_awarded ? "Sticker awarded" : "Already had this sticker"} for ${data[0].chor_name}.</span>`;
+  loadOverview();
+});
+
 // ---------- print cards ----------
 document.getElementById("loadPrintBtn").addEventListener("click", async () => {
   const role = document.getElementById("printRole").value;
@@ -254,7 +373,7 @@ async function loadLogs() {
         <td>${c.chor?.name || "-"}</td>
         <td>${c.police?.name || "-"}</td>
         <td>${c.resulted_in_elimination ? "Eliminated" : "Jailed"}</td>
-        <td><button class="secondary" style="width:auto;padding:4px 8px;" onclick="adminUndoCatch('${c.id}')">Undo</button></td>
+        <td><button class="secondary" style="width:auto;padding:4px 8px;" onclick="undoCatch('${c.id}')">Undo</button></td>
       </tr>`
     )
     .join("");
@@ -276,19 +395,41 @@ async function loadLogs() {
     .join("");
 }
 
-async function adminUndoCatch(catchId) {
-  if (!confirm("Undo this catch? This restores the chor's life and clears any jail time.")) return;
-  const { data, error } = await sb.rpc("admin_undo_catch", { p_admin_id: session.id, p_catch_id: catchId });
-  if (error) {
-    alert(error.message);
-  } else {
-    alert(`Undone — ${data[0].chor_name} is back in the game.`);
-  }
+async function undoCatch(catchId) {
+  const { data, error } = await sb.rpc("admin_undo_catch", { p_admin_passcode: getPasscode(), p_catch_id: catchId });
+  if (error) { alert(error.message); return; }
+  alert(`Undone — ${data[0].chor_name} is back in the game.`);
   loadLogs();
   loadOverview();
 }
 
-// ---------- settings ----------
+// ---------- settings: passcode ----------
+document.getElementById("adminPasscodeInput").value = getPasscode();
+
+document.getElementById("savePasscodeBtn").addEventListener("click", () => {
+  setPasscode(document.getElementById("adminPasscodeInput").value.trim());
+  document.getElementById("passcodeMsg").innerHTML = `<span class="success-msg">Saved on this device.</span>`;
+  checkPasscodeWarning();
+});
+
+document.getElementById("changePasscodeBtn").addEventListener("click", async () => {
+  const oldP = getPasscode();
+  const newP = document.getElementById("newPasscodeInput").value.trim();
+  if (!newP) return;
+  const { error } = await sb.rpc("admin_set_passcode", { p_old_passcode: oldP, p_new_passcode: newP });
+  const msg = document.getElementById("passcodeMsg");
+  if (error) {
+    msg.innerHTML = `<span class="error-msg">${error.message}</span>`;
+  } else {
+    setPasscode(newP);
+    document.getElementById("adminPasscodeInput").value = newP;
+    document.getElementById("newPasscodeInput").value = "";
+    msg.innerHTML = `<span class="success-msg">Passcode changed and saved on this device.</span>`;
+    checkPasscodeWarning();
+  }
+});
+
+// ---------- settings: game settings ----------
 async function loadSettings() {
   const { data } = await sb.from("game_settings").select("*").eq("id", 1).single();
   if (!data) return;
@@ -315,7 +456,7 @@ document.getElementById("saveSettingsBtn").addEventListener("click", async () =>
 
 document.getElementById("resetGameBtn").addEventListener("click", async () => {
   if (!confirm("This wipes ALL stickers, catches, and resets lifelines. Continue?")) return;
-  const { error } = await sb.rpc("reset_game", { p_admin_id: session.id });
+  const { error } = await sb.rpc("reset_game", { p_admin_passcode: getPasscode() });
   if (error) alert(error.message);
   loadOverview();
   loadLogs();
@@ -324,7 +465,7 @@ document.getElementById("resetGameBtn").addEventListener("click", async () => {
 document.getElementById("fullWipeBtn").addEventListener("click", async () => {
   const sure = prompt('This deletes EVERY player (except admin) and EVERY Safe Zone. Type "DELETE" to confirm.');
   if (sure !== "DELETE") return;
-  const { error } = await sb.rpc("admin_full_wipe", { p_admin_id: session.id });
+  const { error } = await sb.rpc("admin_full_wipe", { p_admin_passcode: getPasscode() });
   if (error) {
     alert(error.message);
   } else {

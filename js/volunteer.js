@@ -68,6 +68,7 @@ async function processCode(rawCode) {
   const { data, error } = await sb.rpc("collect_sticker", {
     p_chor_id: chor.id,
     p_checkpost_id: session.assigned_checkpost_id,
+    p_volunteer_id: session.id,
   });
 
   if (error) {
@@ -79,15 +80,14 @@ async function processCode(rawCode) {
   const r = data[0];
   let html = "";
 
-  html += `<div class="safe-ticket-chip">🎫 Safe Ticket granted — protected ~90s</div>`;
-
   if (r.newly_awarded) {
+    html += `<div class="safe-ticket-chip">🎫 Safe Ticket granted — protected ~90s</div>`;
     html += `<div class="success-msg" style="font-size:18px;">✅ ${r.chor_name} — sticker awarded! (${r.total_stickers}/${r.total_checkposts})</div>`;
     if (r.voucher_text) {
       html += `<div class="voucher-chip">🎁 Voucher unlocked: ${r.voucher_text}</div>`;
     }
   } else {
-    html += `<div class="muted" style="font-size:16px;">ℹ️ ${r.chor_name} already collected this zone's sticker. (${r.total_stickers}/${r.total_checkposts})</div>`;
+    html += `<div class="muted" style="font-size:16px;">ℹ️ ${r.chor_name} already collected this zone's sticker. (${r.total_stickers}/${r.total_checkposts}) — no new Safe Ticket granted for a repeat scan.</div>`;
   }
 
   if (r.zone_occupancy != null) {
@@ -138,12 +138,3 @@ async function stopScan() {
 
 document.getElementById("startScanBtn").addEventListener("click", startScan);
 document.getElementById("stopScanBtn").addEventListener("click", stopScan);
-document.getElementById("manualAddBtn").addEventListener("click", () => {
-  const input = document.getElementById("manualCode");
-  if (!input.value.trim()) return;
-  processCode(input.value);
-  input.value = "";
-});
-document.getElementById("manualCode").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") document.getElementById("manualAddBtn").click();
-});
