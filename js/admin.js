@@ -98,8 +98,11 @@ document.getElementById("bulkAddBtn").addEventListener("click", async () => {
   const { data: settings } = await sb.from("game_settings").select("lifelines_default").eq("id", 1).single();
   const lifelinesDefault = settings?.lifelines_default || 3;
 
+  const { data: existingPlayers } = await sb.from("players").select("code");
+  const usedCodes = new Set((existingPlayers || []).map((p) => p.code));
+
   const rows = names.map((name) => ({
-    code: genCode(),
+    code: codeFromName(name, usedCodes),
     name,
     role,
     lifelines: role === "chor" ? lifelinesDefault : 0,

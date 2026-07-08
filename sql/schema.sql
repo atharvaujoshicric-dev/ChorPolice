@@ -420,10 +420,8 @@ $$ language plpgsql security definer;
 create or replace function reset_game(p_admin_id uuid) returns void as $$
 begin
   perform assert_is_admin(p_admin_id);
-  delete from catches;
-  delete from stickers;
-  update players
-    set lifelines = (select lifelines_default from game_settings where id = 1),
+  delete from catches where true;
+  delete from stickers where true;
         status = 'active',
         penalty_until = null,
         protected_until = null,
@@ -443,17 +441,24 @@ $$ language plpgsql security definer;
 create or replace function admin_full_wipe(p_admin_id uuid) returns void as $$
 begin
   perform assert_is_admin(p_admin_id);
-  delete from catches;
-  delete from stickers;
+  delete from catches where true;
+  delete from stickers where true;
   delete from players where role <> 'admin';
-  delete from checkposts;
+  delete from checkposts where true;
 end;
 $$ language plpgsql security definer;
 
 -- ------------------------------------------------------------
 -- VIEW: chor progress (used by admin/chor dashboards)
+-- Dropped first: CREATE OR REPLACE VIEW can only append columns
+-- at the end, not insert one in the middle (protected_until sits
+-- before stickers here), so a plain replace fails with
+-- "cannot change name of view column ... to ...". Dropping and
+-- recreating avoids that entirely.
 -- ------------------------------------------------------------
-create or replace view chor_progress as
+drop view if exists chor_progress;
+
+create view chor_progress as
 select
   p.id as chor_id,
   p.name,

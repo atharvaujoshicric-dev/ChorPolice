@@ -2,8 +2,8 @@
 // FILL THESE IN with your Supabase project values
 // Project Settings > API
 // ============================================================
-const SUPABASE_URL = "https://xjjfhmmokjvajmmwpcqe.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqamZobW1va2p2YWptbXdwY3FlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MzExNDcsImV4cCI6MjA5OTAwNzE0N30.5v1WfHdQm4Wxx5Fq0GHg2fvlxAC52BbdYz-aAws1heo";
+const SUPABASE_URL = "YOUR_SUPABASE_URL";
+const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -43,9 +43,19 @@ function fmtCountdown(msLeft) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function genCode(len = 6) {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let out = "";
-  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
+function codeFromName(name, usedCodes) {
+  usedCodes = usedCodes || new Set();
+  const firstWord = (name || "").trim().split(/\s+/)[0] || "XXX";
+  let letters = firstWord.replace(/[^a-zA-Z]/g, "").toUpperCase().slice(0, 3);
+  while (letters.length < 3) letters += "X";
+
+  const base = `ALPHA-${letters}`;
+  let code = base;
+  let n = 2;
+  while (usedCodes.has(code)) {
+    code = `${base}${n}`;
+    n++;
+  }
+  usedCodes.add(code);
+  return code;
 }
